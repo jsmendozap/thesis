@@ -244,7 +244,7 @@ era52arl_cfg() {
   else
     printf "\n--- Downloading era5utils.py ---\n"
     curl -L --progress-bar -o "$BUILD_DIR/era5utils.py" "$URL"
-    sed -i "/SHGT/s/surface_geopotential/" "$BUILD_DIR/era5utils.py"
+    sed -i "/SHGT/s/geopotential/surface_geopotential/" "$BUILD_DIR/era5utils.py"
 
     printf "\n[OK] era5utils.py downloaded"
   fi
@@ -274,4 +274,4 @@ curl -L --progress-bar \
       "https://raw.githubusercontent.com/jsmendozap/hysplit/main/run.sh"
 
 printf "\n=== Installation complete ===\n"
-#rm -- "$0" 
+rm -- "$0" 

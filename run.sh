@@ -54,8 +54,9 @@ if [ "$DOWNLOAD" = true ]; then
   PERIODS=$(python3 <<EOF
 import json
 from datetime import datetime, timedelta
+import calendar
 
-with open('config.json') as f:
+with open("$CFG") as f:
     config = json.load(f)
 
 d1 = datetime.strptime("$START_DATE", '%Y-%m-%d %H:%M:%S')
