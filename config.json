@@ -1,11 +1,13 @@
 {
-  "date_start": "2026-04-01",
-  "date_end": "2026-04-10",
+  "date_start": "2026-01-11 00:00:00",
+  "date_end": "2025-11-20 00:00:00",
   "area": [15, -85, -25, -30],
+  "vertical_method": 0,
+  "model_height": 15000,
   "datasets": {
     "pressure": {
       "name": "reanalysis-era5-pressure-levels",
-      "output": "PRES.GRIB",
+      "output": "PRES",
       "pressure_levels": [
         "100",
         "125",
@@ -46,7 +48,7 @@
     },
     "surface": {
       "name": "reanalysis-era5-single-levels",
-      "output": "SFC.GRIB",
+      "output": "SFC",
       "variables": [
         "surface_pressure",
         "surface_geopotential",
