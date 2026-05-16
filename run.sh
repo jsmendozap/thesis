@@ -45,7 +45,7 @@ if [ "$DOWNLOAD" = true ]; then
   printf "\n--- Downloading ERA5 data ---\n"
 
   BASE_URL="https://cds.climate.copernicus.eu/api/retrieve/v1"
-  DATASETS=$(jq '.datasets | keys[]' "$CFG")
+  DATASETS=$(jq -r '.datasets | keys[]' "$CFG")
   AREA=$(jq -c '.area' "$CFG")
 
   START_DATE=$(jq -r '.date_start' "$CFG")
@@ -94,10 +94,15 @@ EOF
     
     for key in $DATASETS; do
       PRODUCT=$(jq -r ".datasets.$key.name" "$CFG")
-      OUTFILE=$(jq -j -r \
+      OUTFILE=$(jq -r \
                   --arg k "$key" \
                   --arg suffix "_${YEAR}_${MONTH}.GRIB" \
-                  '.datasets[$k].output, $suffix' "$CFG")
+                  '.datasets[$k].output + $suffix' "$CFG")
+
+      if [ -f "$DATA_DIR/$OUTFILE" ]; then
+        printf "\n[INFO] File already exists, skipping download: $OUTFILE"
+        continue
+      fi
 
       REQUEST=$(jq -c \
         --argjson area "$AREA" \
@@ -125,18 +130,20 @@ EOF
           -d "$BODY" \
           "$BASE_URL/processes/$PRODUCT/execution" | jq -r '.jobID')
 
+      printf "\n[INFO] Job submitted for $key: $YEAR-$MONTH\n"
+
       while true; do
         STATUS=$(curl -s -X 'GET' \
         "$BASE_URL/jobs/$JOB_ID?qos=false&request=false&log=false&allow_unauthenticated=false" \
         -H "accept: application/json" \
         -H "PRIVATE-TOKEN: $KEY" | jq -r '.status')
 
-        echo "  [$PRODUCT] Status: $STATUS"
+        printf "[$PRODUCT] Status: $STATUS\n"
 
         [ "$STATUS" = "successful" ] && break
         [ "$STATUS" = "failed" ]     && echo "[ERROR] Job $PRODUCT failed: $JOB_ID" && exit 1
 
-        sleep 180 
+        sleep 300 
       done
 
       DOWNLOAD_URL=$(curl -X 'GET' \
@@ -170,15 +177,17 @@ sys.path.append("$PROJECT_DIR/build")
 import era5utils
 
 with open("$CFG") as f: 
-  config = json.load(f)
+    config = json.load(f)
 
-var = {v[4]: k for k,v in era5utils.getvars().items() if len(v) >= 4 and v[4]}
+sname = era5utils.getvars()
+var3d = {v[4]: k for k,v in sname.items() if len(v) >= 4 and v[4] and k != 'SHGT'}
+var2d = {v[4]: k for k,v in sname.items() if len(v) >= 4 and v[4] and k != 'HGST'}
 
 pl_vars = config.get("datasets").get("pressure").get("variables")
-sfc_vars = config.get("datasets").get("surface").get("variables")
+param3d = [var3d[x] for x in pl_vars if x in var3d]
 
-param3d = [var[x] for x in pl_vars if x in var]
-param2d = [var[x] for x in sfc_vars if x in var]
+sfc_vars = config.get("datasets").get("surface").get("variables")
+param2d = [var2d[x] for x in sfc_vars if x in var2d]
 
 levtype = "pl"
 levs = [int(x) for x in config.get("datasets").get("pressure").get("pressure_levels")]
@@ -200,7 +209,7 @@ fi
 
 if [ "$CONVERT" = true ]; then
 # --- Verify GRIB files to ARL ----------------------------------------------
-  FILES=$(ls $DATA_DIR | grep .GRIB | awk -F '[_.]' '{print $2"_"$3}' | sort -u)
+  FILES=($(ls $DATA_DIR | grep .GRIB | awk -F '[_.]' '{print $2"_"$3}' | sort -u))
 
   if [ -z "$FILES" ]; then
     echo "[ERROR] No GRIB files found in $DATA_DIR"
@@ -208,19 +217,40 @@ if [ "$CONVERT" = true ]; then
   fi
 
   # --- 3. Convert GRIB Files to ARL ----------------------------------------------------
+  FILES=($(ls $DATA_DIR | grep .GRIB | awk -F '[_.]' '{print $2"_"$3}' | sort -u))
+
+  if [ -z ${#FILES[@]} ]; then
+    echo "[ERROR] No GRIB files found in $DATA_DIR"
+    exit 1
+  fi
+
   printf "\n--- Converting GRIB files to ARL---\n"
 
-  cd "$PROJECT_DIR/run"
-  for file in "$FILES"; do
+  for file in "${FILES[@]}"; do
     IFS='_' read -r year month <<< "$file"
-    printf "\nProcessing year $year month $month \n"
-    LD_LIBRARY_PATH="$PROJECT_DIR/deps/eccodes/lib:$LD_LIBRARY_PATH" \
-    ./era52arl -v \
-      -i"$DATA_DIR/PRES_${file}.GRIB" \
-      -a"$DATA_DIR/SFC_${file}.GRIB" \
-      -o"$OUTPUT_DIR/MET_${file}.ARL"
+    printf "processing file: $file (year: $year, month: $month)\n"
 
-    printf "\n--- MET_${file}.ARL successfully saved in $OUTPUT_DIR---\n"
+    PRES_FILE="$(jq -r '.datasets.pressure.output' "$CFG")_${year}_${month}.GRIB"
+    SURF_FILE="$(jq -r '.datasets.surface.output' "$CFG")_${year}_${month}.GRIB"
+    OUT_FILE="MET_${file}.ARL"
+
+    if [ -f "$OUTPUT_DIR/$OUT_FILE" ]; then
+      printf "[INFO] $OUT_FILE already exists, skipping conversion\n"
+      continue
+    fi
+
+    if [[ ! -f "$DATA_DIR/$PRES_FILE" || ! -f "$DATA_DIR/$SURF_FILE" ]]; then
+        printf "[ERROR] Missing files for %s. Check %s or %s\n" "$file" "$PRES_FILE" "$SURF_FILE"
+        continue
+    fi
+
+    LD_LIBRARY_PATH="$PROJECT_DIR/deps/eccodes/lib:$LD_LIBRARY_PATH" \
+    .$RUN_DIR/era52arl -v \
+      -i"$DATA_DIR/$PRES_FILE" \
+      -a"$DATA_DIR/$SURF_FILE" \
+      -o"$OUTPUT_DIR/$OUT_FILE"
+
+    [[ $? -eq 0 ]] && printf "[OK] $OUT_FILE successfully saved in $OUTPUT_DIR\n"
   done
 
   cd "$PROJECT_DIR"
@@ -231,32 +261,92 @@ printf "\n--- Setting up CONTROL file ---\n"
 CONTROL_SRC="$RUN_DIR/CONTROL"
 CONTROL_DST="$HYSPLIT_EXEC/CONTROL"
 
-if [ ! -f "$CONTROL_SRC" ]; then
-  printf "\n--- ERROR: CONTROL file template not found in $CONTROL_SRC ---\n"
-  exit 1
-fi
+START=$(jq '.date_start' "$CFG" | xargs -I {} date -d "{}" +"%Y %m %d %H")
+NUM_POINTS=$(jq '.control.points | length' "$CFG")
 
-ARL_FILES=($(ls "$OUTPUT_DIR" | grep "MET_.*\.ARL"))
-NUM_MET=${#ARL_FILES[@]}
+START_SEC=$(jq -r '.date_start' "$CFG" | xargs -I {} date -d "{}" +%s)
+END_SEC=$(jq -r '.date_end' "$CFG" | xargs -I {} date -d "{}" +%s)
+DURATION=$(( ( $END_SEC - $START_SEC ) / 3600 ))
+
+VERT_METHOD=$(jq -r '.control.vertical_method' "$CFG")
+TOP_MODEL=$(jq -r '.control.top_model' "$CFG")
+MET_FILES=($(ls "$OUTPUT_DIR" | grep "MET_.*\.ARL"))
+NUM_MET=${#MET_FILES[@]}
 
 if [ $NUM_MET -eq 0 ]; then
   printf "\n--- ERROR: No ARL files found in $OUTPUT_DIR ---\n"
   exit 1
 fi
 
-printf "" > "$RUN_DIR/met_list.tmp"
-for ARL in "${ARL_FILES[@]}"; do
-  printf "${OUTPUT_DIR}/\n${ARL}\n" >> "$RUN_DIR/met_list.tmp"
-done
+{
+  echo "$START"
+  echo "$NUM_POINTS"
+  
+  for (( i=0; i<$NUM_POINTS; i++ )); do
+      jq -r ".control.points[$i] | \"\(.lat) \(.lon) \(.height)\"" "$CFG"
+  done
+  
+  echo "$DURATION"
+  echo "$VERT_METHOD"
+  echo "$TOP_MODEL"
+  echo "$NUM_MET"
+  
+  for f in "${MET_FILES[@]}"; do
+    echo "$OUTPUT_DIR/"
+    echo "$f"
+  done
 
-sed -i "s|<<NUM_MET>>|$NUM_MET|g" "$CONTROL_SRC"
-sed -i -e "/<<MET_BLOCK>>/r $RUN_DIR/met_list.tmp" -e "/<<MET_BLOCK>>/d" "$CONTROL_SRC"
-sed -i '/^$/d' "$CONTROL_SRC"
+  echo "$OUTPUT_DIR/"
+  echo "traj_out.txt"
+} > "$CONTROL_SRC"
 
-rm "$RUN_DIR/met_list.tmp"
-printf "\n--- CONTROL file configured successfully ---\n"
+printf "\n--- CONTROL file generated successfully ---\n"
 
-# --- 5. HYSPLIT ----------------------------------------------------------------
+# --- 5. SETUP.CFG ----------------------------------------------------------------
+TCL_SRC="$PROJECT_DIR/build/hysplit/guicode/traj_cfg.tcl"
+OUTPUT_CFG="$RUN_DIR/SETUP.CFG"
+
+ACTIVE_LABELS=$(jq -r '.output | to_entries | .[] | select(.value > 0) | .key' "$CFG")
+
+if [[ -n "$ACTIVE_LABELS" ]]; then
+  declare -A MAP
+  while read -r line; do
+    LABEL=$(echo "$line" |  awk -F '"' '{print $2}' | xargs)
+    VAR=$(echo "$line" | awk -F '-variable' '{print $2}' | xargs)
+    
+    if [[ -n "$LABEL" && -n "$VAR" ]]; then
+      MAP["$LABEL"]="$VAR"
+    fi
+  done < <(grep "checkbutton" "$TCL_SRC")
+
+  ACTIVE_VARS=""
+  for label in "${!MAP[@]}"; do
+    VAL=$(jq -r ".output[\"$label\"]" "$CFG")
+    if [[ "$VAL" -eq 1 ]]; then
+      ACTIVE_VARS="${ACTIVE_VARS} ${MAP[$label]}"
+    fi
+  done
+
+  {
+    echo "&SETUP"
+
+    sed -n '/proc reset_config/,/}/p' "$TCL_SRC" | grep "^set" | while read -r _ key val; do
+      
+      if [[ $key =~ ^(tset|delt)$ ]]; then
+        continue
+      fi
+
+      if [[ $ACTIVE_VARS == *$key* ]]; then
+        val=1
+      fi 
+      echo $key=$val
+    done
+
+    echo "/"
+  } > "$OUTPUT_CFG"
+fi
+
+# --- 6. HYSPLIT ----------------------------------------------------------------
 printf "\n--- Executing HYSPLIT ---\n"
 cp "$RUN_DIR/SETUP.CFG" "$HYSPLIT_EXEC/"
 cp "$CONTROL_SRC" "$CONTROL_DST"

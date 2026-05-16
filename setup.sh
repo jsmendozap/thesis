@@ -35,7 +35,7 @@ done
 check_compilers() {
   printf "\n--- Verifying compilers and system dependencies ---\n"
 
-  local required=(gfortran gcc cmake)
+  local required=(gfortran gcc cmake g++ unzip tar curl jq sed)
   local optional=(mpich tcl tk)
   local missing_required=()
   local missing_optional=()
@@ -244,9 +244,8 @@ era52arl_cfg() {
   else
     printf "\n--- Downloading era5utils.py ---\n"
     curl -L --progress-bar -o "$BUILD_DIR/era5utils.py" "$URL"
-    sed -i "/SHGT/s/geopotential/surface_geopotential/" "$BUILD_DIR/era5utils.py"
 
-    printf "\n[OK] era5utils.py downloaded"
+    printf "\n[OK] era5utils.py downloaded successfully"
   fi
 }
 
