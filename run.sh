@@ -13,7 +13,7 @@ DATA_DIR="$PROJECT_DIR/data"
 OUTPUT_DIR="$PROJECT_DIR/output"
 RUN_DIR="$PROJECT_DIR/run"
 HYSPLIT_EXEC="$PROJECT_DIR/build/hysplit/exec"
-CFG="$RUN_DIR/config.json"
+CFG="$PROJECT_DIR/config.json"
 
 DOWNLOAD=false
 CONVERT=true
@@ -26,19 +26,6 @@ for arg in "$@"; do
     *) echo "Unknown flag: $arg"; exit 1 ;;
   esac
 done
-
-# --- Load environment variables ----------------------------------------------
-if [ -f "$PROJECT_DIR/.env" ]; then
-  export $(grep -v '^#' "$PROJECT_DIR/.env" | xargs)
-else
-  echo "[ERROR] .env file not found in $PROJECT_DIR"
-  exit 1
-fi
-
-if [ -z "$KEY" ]; then
-  echo "[ERROR] The KEY variable is not defined in the .env file"
-  exit 1
-fi
 
 # --- Time of interest ----------------------------------------------------------
 START_DATE=$(jq -r '.date_start' "$CFG")
@@ -79,6 +66,19 @@ EOF
 
 # --- 1. Download ERA5 data --------------------------------------------
 if [ "$DOWNLOAD" = true ]; then
+
+  if [ -f "$PROJECT_DIR/.env" ]; then
+    export $(grep -v '^#' "$PROJECT_DIR/.env" | xargs)
+  else
+    echo "[ERROR] .env file not found in $PROJECT_DIR"
+    exit 1
+  fi
+
+  if [ -z "$KEY" ]; then
+    echo "[ERROR] The KEY variable is not defined in the .env file"
+    exit 1
+  fi
+
   printf "\n--- Downloading ERA5 data ---\n"
 
   BASE_URL="https://cds.climate.copernicus.eu/api/retrieve/v1"
@@ -154,6 +154,11 @@ if [ "$DOWNLOAD" = true ]; then
         -H "PRIVATE-TOKEN: $KEY" \
         -o "$DATA_DIR/$OUTFILE" \
         "$DOWNLOAD_URL"
+        
+      curl -X 'DELETE' \
+        "$BASE_URL/jobs/$JOB_ID?allow_unauthenticated=false" \
+        -H 'accept: application/json' \
+        -H "PRIVATE-TOKEN: $KEY"
 
       echo "[OK] $OUTFILE downloaded successfully"
     done
@@ -224,7 +229,7 @@ if [ "$CONVERT" = true ]; then
     SURF_FILE="$(jq -r '.datasets.surface.output' "$CFG")_${year}_${month}.GRIB"
     OUT_FILE="MET_${file}.ARL"
 
-    if [ -f "$OUTPUT_DIR/$OUT_FILE" ]; then
+    if [ -f "$DATA_DIR/$OUT_FILE" ]; then
       printf "[INFO] $OUT_FILE already exists, skipping conversion\n"
       continue
     fi
@@ -238,9 +243,9 @@ if [ "$CONVERT" = true ]; then
     .$RUN_DIR/era52arl -v \
       -i"$DATA_DIR/$PRES_FILE" \
       -a"$DATA_DIR/$SURF_FILE" \
-      -o"$OUTPUT_DIR/$OUT_FILE"
+      -o"$DATA_DIR/$OUT_FILE"
 
-    [[ $? -eq 0 ]] && printf "[OK] $OUT_FILE successfully saved in $OUTPUT_DIR\n"
+    [[ $? -eq 0 ]] && printf "[OK] $OUT_FILE successfully saved in $DATA_DIR\n"
   done
 
   cd "$PROJECT_DIR"
@@ -251,8 +256,10 @@ TCL_SRC="$PROJECT_DIR/build/hysplit/guicode/traj_cfg.tcl"
 OUTPUT_CFG="$RUN_DIR/SETUP.CFG"
 
 ACTIVE_LABELS=$(jq -r '.output | to_entries | .[] | select(.value > 0) | .key' "$CFG")
+RESTART=$(jq -r ".setup.restart_interval" "$CFG")
+TSPAN=$(jq -r ".setup.trajectory_duration" "$CFG")
 
-if [[ -n "$ACTIVE_LABELS" ]]; then
+if [[ -n "$ACTIVE_LABELS" || "$TSPAN" -ne 9999 || "$RESTART" -gt 0 ]]; then
   declare -A MAP
   while read -r line; do
     LABEL=$(echo "$line" |  awk -F '"' '{print $2}' | xargs)
@@ -273,9 +280,6 @@ if [[ -n "$ACTIVE_LABELS" ]]; then
 
   {
     echo "&SETUP"
-
-    RESTART=$(jq -r ".setup.restart_interval" "$CFG")
-    TSPAN=$(jq -r ".setup.trajectory_duration" "$CFG")
 
     sed -n '/proc reset_config/,/}/p' "$TCL_SRC" | grep "^set" | while read -r _ key val; do
       
@@ -334,7 +338,12 @@ direction = int("$DIRECTION")
 tspan = 0 if raw_tspan == 9999 else raw_tspan
 
 t_min = datetime(year, month, int(days[0]), 0, 0)
-t_max = datetime(year, month, int(days[-1]), 0, 0) + timedelta(days=1)
+t_max = datetime(year, month, int(days[-1]), 23, 0)
+
+g_dates = [datetime.strptime("$START_DATE", "%Y-%m-%d %H:%M:%S"), datetime.strptime("$END_DATE", "%Y-%m-%d %H:%M:%S")]
+t_min = max(t_min, min(g_dates))
+t_max = min(t_max, max(g_dates))
+
 hspan = int((t_max - t_min).total_seconds() / 3600)
 
 if direction == -1:
@@ -375,8 +384,8 @@ EOF
   MET_FILES=()
   while read -r f; do
     if [[ -n "$f" ]]; then
-      if [[ ! -f "$OUTPUT_DIR/$f" ]]; then
-        printf "[ERROR] Missing meteorological file: %s/%s\n" "$OUTPUT_DIR" "$f"
+      if [[ ! -f "$DATA_DIR/$f" ]]; then
+        printf "[ERROR] Missing meteorological file: %s/%s\n" "$DATA_DIR" "$f"
         exit 1
       fi
       MET_FILES+=("$f")
@@ -397,7 +406,7 @@ EOF
     echo "$NUM_MET"
     
     for f in "${MET_FILES[@]}"; do
-      echo "$OUTPUT_DIR/"
+      echo "$DATA_DIR/"
       echo "$f"
     done
 

@@ -2,14 +2,31 @@
 # =============================================================================
 # setup.sh — Download and installation of HYSPLIT + era52arl
 # Usage:
-#   ./setup.sh              
+#   ./setup.sh --project my_run --config ./config.json             
 #   ./setup.sh --skip-download  
 # =============================================================================
 
 set -e  # exit on error
 
+# --- Parse flags ---------------------------------------------------------
+PROJECT_NAME=""
+SKIP_DOWNLOAD=false
+
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    --skip-download) SKIP_DOWNLOAD=true; shift ;;
+    --project) PROJECT_NAME="$2"; shift 2 ;;
+    *) echo "Unknown flag: $1"; exit 1 ;;
+  esac
+done
+
 # --- Configuration -----------------------------------------------------------
-PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -n "$PROJECT_NAME" ]; then
+  PROJECT_DIR="$PWD/$PROJECT_NAME"
+else
+  PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+fi
+
 DEPS_DIR="$PROJECT_DIR/deps"
 BUILD_DIR="$PROJECT_DIR/build"
 OUTPUT_DIR="$PROJECT_DIR/output"
@@ -17,18 +34,9 @@ DATA_DIR="$PROJECT_DIR/data"
 TARBALLS_DIR="$PROJECT_DIR/tarballs"
 RUN_DIR="$PROJECT_DIR/run"
 
-SKIP_DOWNLOAD=false
-
 # --- Create project structure ------------------------------------------------
 mkdir -p "$DEPS_DIR" "$BUILD_DIR" "$OUTPUT_DIR" "$DATA_DIR" "$TARBALLS_DIR" "$RUN_DIR"
 
-# --- Parse flags ---------------------------------------------------------
-for arg in "$@"; do
-  case $arg in
-    --skip-download) SKIP_DOWNLOAD=true ;;
-    *) echo "Unknown flag: $arg"; exit 1 ;;
-  esac
-done
 
 # --- Functions ---------------------------------------------------------------
 
@@ -271,6 +279,8 @@ setup_run_dir
 curl -L --progress-bar \
       -o "$PROJECT_DIR/run.sh" \
       "https://raw.githubusercontent.com/jsmendozap/hysplit/main/run.sh"
+
+chmod +x "$PROJECT_DIR/run.sh"
 
 printf "\n=== Installation complete ===\n"
 rm -- "$0" 
