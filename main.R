@@ -1,7 +1,7 @@
 library(tidyverse)
 library(sf)
 
-source("config.R")
+source("https://raw.githubusercontent.com/jsmendozap/hysplit/main/config.R")
 
 ######### Study region ###################
 
@@ -17,20 +17,20 @@ col <- rnaturalearth::ne_countries() %>%
   st_geometry()
 
 amazonian_col <- st_intersection(col, amazonian)
-rm(col, amazonian)
+rm(col, amazonian, url)
 
 
 ######### Configuration file ################
 
-START_DATE <- "2026-01-11 00:00:00"
-END_DATE <- "2025-11-20 00:00:00"
+START_DATE <- "2026-02-05 00:00:00"
+END_DATE <- "2026-01-25 00:00:00"
 HEIGHTS <- c(300, 500, 1500)
-CONFIG_PATH <- "/Users/juan/Desktop/config.json"
+CONFIG_PATH <- "/home/juan/Desktop/config.json"
 AOI <- st_bbox(c(xmin = -85, ymin = -25, xmax = -30, ymax = 15))
 TOP_MODEL <- 1500
 VERTICAL_METHOD <- 0
-RESTART_INTERVAL <- 0
-TRAJECTORY_DURATION <- 9999
+RESTART_INTERVAL <- 6
+TRAJECTORY_DURATION <- 240
 OUTPUT_VARS <- "Specific Humidity"
 PRES_VARS <- "specific_humidity"
 SFC_VARS <- c(

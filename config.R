@@ -55,22 +55,22 @@ project_setup <- function(path,
                 name = "reanalysis-era5-single-levels",
                 output = output.sfc,
                 variables = c(
-                    "surface_geopotential",
+                    "geopotential",
                     "10m_u_component_of_wind",
                     "10m_v_component_of_wind",
                     "2m_temperature",
                     sfc.vars
                 ) |> unique()
-            ),
-            setup = list(
-                restart_interval = restart.interval,
-                trajectory_duration = trajectory.duration,
-                vertical_method = vertical.method,
-                top_model = top.model,
-                points = points
-            ),
-            output = sapply(output, \(x) as.integer(x %in% output.vars)) |> as.list()
-        )
+            )
+        ),
+        setup = list(
+            restart_interval = restart.interval,
+            trajectory_duration = trajectory.duration,
+            vertical_method = vertical.method,
+            top_model = top.model,
+            points = points
+        ),
+        output = sapply(output, \(x) as.integer(x %in% output.vars)) |> as.list()
     )
 
     write_json(x = config, path = path, pretty = T, auto_unbox = T)

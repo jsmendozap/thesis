@@ -2,7 +2,7 @@
 # =============================================================================
 # run.sh — Execution of HYSPLIT with ERA5 data
 # Usage:
-#   ./run.sh              → Only convert and run HYSPLIT (assumes PRES.GRIB and SFC.GRIB already exist in ./data)
+#   ./run.sh              → Only convert and run HYSPLIT (assumes PRES_*_*.GRIB and SFC_*_*.GRIB already exist in ./data)
 #   ./run.sh --download   → Download ERA5, convert and run HYSPLIT
 # =============================================================================
 
@@ -88,7 +88,7 @@ if [ "$DOWNLOAD" = true ]; then
   HOURS=$(seq -f "%02g:00" 0 23 | jq -R . | jq -s -c .)
 
   echo "$PERIODS" | while IFS='|' read -r YEAR MONTH DAYS; do
-    printf "\n--- Processing period: $YEAR-$MONTH ---\n"
+    printf "[INFO] Processing period: $YEAR-$MONTH \n"
     
     for key in $DATASETS; do
       PRODUCT=$(jq -r ".datasets.$key.name" "$CFG")
@@ -106,9 +106,9 @@ if [ "$DOWNLOAD" = true ]; then
         --argjson area "$AREA" \
         --argjson days "$DAYS" \
         --argjson hours "$HOURS" \
-        --argjson yr "$YEAR" \
-        --argjson mo "$MONTH" \
-        --argjson key "$key" \
+        --arg yr "$YEAR" \
+        --arg mo "$MONTH" \
+        --arg key "$key" \
         '.datasets[$key] | {
           product_type: "reanalysis",
           variable: .variables,
@@ -155,7 +155,8 @@ if [ "$DOWNLOAD" = true ]; then
         -o "$DATA_DIR/$OUTFILE" \
         "$DOWNLOAD_URL"
         
-      curl -X 'DELETE' \
+      curl -X 'DELETE' -s \
+        -o /dev/null \
         "$BASE_URL/jobs/$JOB_ID?allow_unauthenticated=false" \
         -H 'accept: application/json' \
         -H "PRIVATE-TOKEN: $KEY"
@@ -240,7 +241,8 @@ if [ "$CONVERT" = true ]; then
     fi
 
     LD_LIBRARY_PATH="$PROJECT_DIR/deps/eccodes/lib:$LD_LIBRARY_PATH" \
-    .$RUN_DIR/era52arl -v \
+    cd $RUN_DIR
+    ./era52arl -v \
       -i"$DATA_DIR/$PRES_FILE" \
       -a"$DATA_DIR/$SURF_FILE" \
       -o"$DATA_DIR/$OUT_FILE"
