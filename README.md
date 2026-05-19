@@ -84,4 +84,4 @@ After running the setup and run scripts, the project folder will mirror this str
 
 ## Credits
 
-The generation of the `era52arl.cfg` mappings relies on the `era5utils.py` script provided by the [hysplit_metdata repository](https://github.com/hysplit/hysplit_metdata).
+The generation of the `era52arl.cfg` mappings relies on the `era5utils.py` script provided by the [hysplit_metdata repository](https://github.com/amcz/hysplit_metdata/tree/master).
