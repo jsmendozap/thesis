@@ -2,7 +2,7 @@
 # =============================================================================
 # run.sh — Execution of HYSPLIT with ERA5 data
 # Usage:
-#   ./run.sh              → Only convert and run HYSPLIT (assumes PRES_*_*.GRIB and SFC_*_*.GRIB already exist in ./data)
+#   ./run.sh              → Only convert and run HYSPLIT (assumes PRES_*_*_*_*.GRIB and SFC_*_*_*_*.GRIB already exist in ./data)
 #   ./run.sh --download   → Download ERA5, convert and run HYSPLIT
 # =============================================================================
 

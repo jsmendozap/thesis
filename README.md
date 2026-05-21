@@ -74,11 +74,11 @@ After running the setup and run scripts, the project folder will mirror this str
 
 ## Important Notes on Data Processing
 
-- **Monthly Execution Logic:** The workflow is fundamentally designed to operate on a strict **monthly basis**. Regardless of the total duration of the study defined during configuration, the pipeline always downloads ERA5 data, performs ARL format conversions, and executes HYSPLIT in discrete monthly chunks.
+- **Chunked Download & Interval Execution:** To comply with Copernicus API limitations, ERA5 data downloads are dynamically divided into chunks of up to **11 days**. The workflow executes HYSPLIT simulations iteratively at user-defined regular intervals (defaulting to a 24-hour daily cycle, adjustable via `interval_traj`), making it ideal for downstream cluster analysis.
 
-- **File Naming Conventions:** If the download phase is skipped (e.g., by manually providing pre-downloaded GRIB or ARL data inside the `data/` directory), the files **must** adhere to a strict naming pattern. Failing to match these patterns will result in execution errors:
-  - **GRIB files:** Must be formatted as `<output_prefix>_YYYY_MM.GRIB` (e.g., `PRES_2025_01.GRIB`). The prefix must exactly match the output string defined for each dataset in the `config.json` file.
-  - **ARL files:** Converted meteorological files must be formatted as `MET_YYYY_MM.ARL` (e.g., `MET_2025_01.ARL`).
+- **File Naming Conventions:** If the download phase is skipped (e.g., by manually providing pre-downloaded GRIB or ARL data inside the `data/` directory), the files **must** adhere to a strict naming pattern that reflects the chunking logic. Failing to match these patterns will result in execution errors:
+  - **GRIB files:** Must be formatted as `<output_prefix>_YYYY_MM_CHUNK_NCHUNKS.GRIB` (e.g., `PRES_2025_01_1_3.GRIB`). The prefix can be either `PRES` or `SFC` depending on the dataset that generated the GRIB file.
+  - **ARL files:** Converted meteorological files must be formatted as `MET_YYYY_MM_CHUNK_NCHUNKS.ARL` (e.g., `MET_2025_01_1_3.ARL`).
 
 ---
 
