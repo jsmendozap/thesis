@@ -2,7 +2,6 @@
 # =============================================================================
 # setup.sh — Download and installation of HYSPLIT + era52arl
 # Usage:
-#   ./setup.sh --project my_run --config ./config.json             
 #   ./setup.sh --skip-download  
 # =============================================================================
 
@@ -15,18 +14,12 @@ SKIP_DOWNLOAD=false
 while [[ "$#" -gt 0 ]]; do
   case $1 in
     --skip-download) SKIP_DOWNLOAD=true; shift ;;
-    --project) PROJECT_NAME="$2"; shift 2 ;;
     *) echo "Unknown flag: $1"; exit 1 ;;
   esac
 done
 
 # --- Configuration -----------------------------------------------------------
-if [ -n "$PROJECT_NAME" ]; then
-  PROJECT_DIR="$PWD/$PROJECT_NAME"
-else
-  PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-fi
-
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEPS_DIR="$PROJECT_DIR/deps"
 BUILD_DIR="$PROJECT_DIR/build"
 OUTPUT_DIR="$PROJECT_DIR/output"
@@ -36,7 +29,6 @@ RUN_DIR="$PROJECT_DIR/run"
 
 # --- Create project structure ------------------------------------------------
 mkdir -p "$DEPS_DIR" "$BUILD_DIR" "$OUTPUT_DIR" "$DATA_DIR" "$TARBALLS_DIR" "$RUN_DIR" "$RUN_DIR/log"
-
 
 # --- Functions ---------------------------------------------------------------
 
@@ -276,11 +268,6 @@ compile_era52arl
 era52arl_cfg
 setup_run_dir
 
-curl -L --progress-bar \
-      -o "$PROJECT_DIR/run.sh" \
-      "https://raw.githubusercontent.com/jsmendozap/hysplit/main/run.sh"
-
 chmod +x "$PROJECT_DIR/run.sh"
 
 printf "\n=== Installation complete ===\n"
-rm -- "$0" 

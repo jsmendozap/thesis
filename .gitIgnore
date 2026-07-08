@@ -1,4 +1,9 @@
+_targets
+.vscode
 .DS_Store
+data/*
 .Rhistory
-points.parquet
-.env
+main.R
+output/results.db
+hysplit/config.json
+hysplit/.env

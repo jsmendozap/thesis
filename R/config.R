@@ -1,5 +1,4 @@
 library(jsonlite)
-library(sf)
 
 #' Setup HYSPLIT Project Configuration
 #'

@@ -51,7 +51,8 @@ notify() {
   local MSG
   printf -v MSG "$@"
   if [ "$NOTIFY" = true ]; then
-    curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d "chat_id=$CHAT_ID" -d "disable_notification=true" --data-urlencode "text=$MSG" > /dev/null &
+    local CLEAN_MSG=$(echo -n "$MSG" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g')
+    curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" -d "chat_id=$CHAT_ID" -d "disable_notification=true" --data-urlencode "text=$CLEAN_MSG" > /dev/null &
   fi
   printf "%s" "$MSG"
 }
