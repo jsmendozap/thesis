@@ -21,14 +21,20 @@ done
 # --- Configuration -----------------------------------------------------------
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEPS_DIR="$PROJECT_DIR/deps"
-BUILD_DIR="$PROJECT_DIR/build"
+BIN_DIR="$PROJECT_DIR/bin"
 OUTPUT_DIR="$PROJECT_DIR/output"
 DATA_DIR="$PROJECT_DIR/data"
 TARBALLS_DIR="$PROJECT_DIR/tarballs"
 RUN_DIR="$PROJECT_DIR/run"
+LOG_DIR="$RUN_DIR/log"
+RAW_DIR="$OUTPUT_DIR/raw"
+PARQUET_DIR="$OUTPUT_DIR/parquet"
+MET_DIR="$DATA_DIR/ARL"
+GRIB_DIR="$DATA_DIR/GRIB"
+SCRIPTS_DIR="$PROJECT_DIR/scripts"
 
 # --- Create project structure ------------------------------------------------
-mkdir -p "$DEPS_DIR" "$BUILD_DIR" "$OUTPUT_DIR" "$DATA_DIR" "$TARBALLS_DIR" "$RUN_DIR" "$RUN_DIR/log" "$OUTPUT_DIR/original"
+mkdir -p "$DEPS_DIR" "$BIN_DIR" "$OUTPUT_DIR" "$DATA_DIR" "$TARBALLS_DIR" "$RUN_DIR" "$LOG_DIR" "$RAW_DIR" "$PARQUET_DIR" "$MET_DIR" "$GRIB_DIR"
 
 # --- Functions ---------------------------------------------------------------
 
@@ -77,6 +83,7 @@ download_files() {
   ERA52ARL_URL="https://www.ready.noaa.gov/data/web/models/hysplit4/decoders/hysplit_data2arl.zip"
   ECCODES_URL="https://github.com/ecmwf/eccodes/archive/refs/tags/2.47.0.tar.gz"
   HYSPLIT_METDATA_URL="https://www.ready.noaa.gov/data/web/models/hysplit4/decoders/hysplit_metdata.tar.gz"
+  DUCKDB_URL="https://install.duckdb.org/v1.5.4/duckdb_cli-linux-amd64.zip"
 
   if [ "$SKIP_DOWNLOAD" = true ]; then
     printf "\n--- Skipping download, using tarballs in $TARBALLS_DIR ---\n"
@@ -90,6 +97,7 @@ download_files() {
     ["hysplit_data2arl.zip"]="$ERA52ARL_URL"
     ["eccodes.tar.gz"]="$ECCODES_URL"
     ["hysplit_metdata.tar.gz"]="$HYSPLIT_METDATA_URL"
+    ["duckdb.zip"]="$DUCKDB_URL"
   )
 
   for filename in "${!files[@]}"; do
@@ -108,26 +116,28 @@ download_files() {
 extract_files() {
   printf "\n--- Extracting files ---\n"
 
-  if [ -d "$BUILD_DIR/hysplit" ]; then
+  if [ -d "$BIN_DIR/hysplit" ]; then
     printf "\n[OK] hysplit already extracted, skipping"
   else
     local hysplit_root
     hysplit_root=$(tar -tzf "$TARBALLS_DIR/hysplit.tar.gz" | head -1 | cut -d'/' -f1)
-    tar -xzf "$TARBALLS_DIR/hysplit.tar.gz" -C "$BUILD_DIR"
-    mv "$BUILD_DIR/$hysplit_root" "$BUILD_DIR/hysplit"
-    printf "\n[OK] hysplit extracted to $BUILD_DIR/hysplit"
+    tar -xzf "$TARBALLS_DIR/hysplit.tar.gz" -C "$BIN_DIR"
+    mv "$BIN_DIR/$hysplit_root" "$BIN_DIR/hysplit"
+    printf "\n[OK] hysplit extracted to $BIN_DIR/hysplit"
   fi
 
-  if [ -d "$BUILD_DIR/data2arl" ]; then
+  if [ -d "$BIN_DIR/data2arl" ]; then
     printf "\n[OK] data2arl already extracted, skipping"
   else
     local data2arl_root
     data2arl_root=$(unzip -Z1 "$TARBALLS_DIR/hysplit_data2arl.zip" | head -1 | cut -d'/' -f1)
-    unzip -q "$TARBALLS_DIR/hysplit_data2arl.zip" -d "$BUILD_DIR"
-    mv "$BUILD_DIR/$data2arl_root" "$BUILD_DIR/data2arl"
-    printf "\n[OK] data2arl extracted to $BUILD_DIR/data2arl"
+    unzip -q "$TARBALLS_DIR/hysplit_data2arl.zip" -d "$BIN_DIR"
+    mv "$BIN_DIR/$data2arl_root" "$BIN_DIR/data2arl"
+    printf "\n[OK] data2arl extracted to $BIN_DIR/data2arl"
   fi
-  
+
+  unzip -q "$TARBALLS_DIR/duckdb.zip" -d "$BIN_DIR"
+
   printf "\n[OK] Tarballs extracted successfully"
 }
 
@@ -166,9 +176,9 @@ install_eccodes() {
 
 
 setup_makefile() {
-  local SRC="$BUILD_DIR/data2arl/Makefile.inc.gfortran"
-  local DST="$BUILD_DIR/data2arl/Makefile.inc"
-  local ERA_MK="$BUILD_DIR/data2arl/era52arl/Makefile"
+  local SRC="$BIN_DIR/data2arl/Makefile.inc.gfortran"
+  local DST="$BIN_DIR/data2arl/Makefile.inc"
+  local ERA_MK="$BIN_DIR/data2arl/era52arl/Makefile"
 
   printf "\n--- Setting up eccodes path in Makefile.inc---\n"
 
@@ -191,7 +201,7 @@ setup_makefile() {
 
 
 compile_library() {
-  local LIB_DIR="$BUILD_DIR/data2arl/metprog/library"
+  local LIB_DIR="$BIN_DIR/data2arl/metprog/library"
   local LIBRARY="$LIB_DIR/libhysplit.a"
 
   if [ -f "$LIBRARY" ]; then
@@ -214,7 +224,7 @@ compile_library() {
 
 
 compile_era52arl() {
-  local ERA_DIR="$BUILD_DIR/data2arl/era52arl"
+  local ERA_DIR="$BIN_DIR/data2arl/era52arl"
   local BINARY="$ERA_DIR/era52arl"
 
   if [ -f "$BINARY" ]; then
@@ -239,11 +249,11 @@ compile_era52arl() {
 era52arl_cfg() {
   local URL="https://raw.githubusercontent.com/amcz/hysplit_metdata/master/era5utils.py"
 
-  if [ -f "$BUILD_DIR/era5utils.py" ]; then
+  if [ -f "$BIN_DIR/era5utils.py" ]; then
     printf "\n[OK] era5utils.py already exists, skipping"
   else
     printf "\n--- Downloading era5utils.py ---\n"
-    curl -L --progress-bar -o "$BUILD_DIR/era5utils.py" "$URL"
+    curl -L --progress-bar -o "$BIN_DIR/era5utils.py" "$URL"
 
     printf "\n[OK] era5utils.py downloaded successfully"
   fi
@@ -252,7 +262,7 @@ era52arl_cfg() {
 
 setup_run_dir() {
   printf "\n--- Creating run directory ---\n"
-  ln -sf "$BUILD_DIR/data2arl/era52arl/era52arl" "$RUN_DIR/era52arl"
+  ln -sf "$BIN_DIR/data2arl/era52arl/era52arl" "$RUN_DIR/era52arl"
 }
 
 
@@ -268,8 +278,7 @@ compile_era52arl
 era52arl_cfg
 setup_run_dir
 
-chmod +x "$PROJECT_DIR/run.sh"
-wget https://install.duckdb.org/v1.5.4/duckdb_cli-linux-amd64.zip
-unzip duckdb_cli-linux-aarch64.zip
+cd $PROJECT_DIR
+chmod +x "$SCRIPTS_DIR/download.sh"  "$SCRIPTS_DIR/conversion.sh"  "$SCRIPTS_DIR/execution.sh" "$SCRIPTS_DIR/simulation.sh"
 
 printf "\n=== Installation complete ===\n"
