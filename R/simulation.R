@@ -1,4 +1,4 @@
-library(tidyr)
+pacman::p_load(dplyr, tidyr, sf)
 
 setup <- function(profile, aoi, path) {
   START_DATE <- "2025-12-31 23:00:00"
@@ -12,13 +12,13 @@ setup <- function(profile, aoi, path) {
     arrange(desc(level)) %>%
     mutate(flux_cum = cumsum(flux) / sum(flux)) %>%
     {approxfun(.$flux_cum, .$level)} %>%
-    {.(seq(0.05, 0.995, length.out = 30))} %>%
+    {.(seq(0.05, 0.99, length.out = 30))} %>%
     {8000 * log(1014 / .)} %>%
     round(digits = -1)
 
   CONFIG_PATH <- path
   BBOX <- st_bbox(c(xmin = -80, ymin = -35, xmax = 20, ymax = 30))
-  TOP_MODEL <- 10000
+  TOP_MODEL <- 9000
   PRESSURE_LEVELS <- filter(profile, level >= units::as_units("300 millibars")) %>%
     pull(level) %>%
     unique() %>%
@@ -50,4 +50,6 @@ setup <- function(profile, aoi, path) {
     pres.vars = PRES_VARS,
     sfc.vars = SFC_VARS
   )
+
+  return(path)
 }

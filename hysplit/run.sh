@@ -13,9 +13,11 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_DIR="$PROJECT_DIR/data"
 OUTPUT_DIR="$PROJECT_DIR/output"
+TXT_DIR="$OUTPUT_DIR/original"
 RUN_DIR="$PROJECT_DIR/run"
 HYSPLIT_EXEC="$PROJECT_DIR/build/hysplit/exec"
 CFG="$PROJECT_DIR/config.json"
+DUCKDB_BIN="$PROJECT_DIR/duckdb"
 
 DOWNLOAD=false
 CONVERT=true
@@ -439,12 +441,44 @@ for (( current=SIM_LOWER; current<=SIM_UPPER; current+=$((TR_INTERVAL * 3600)) )
     echo "traj_${TIME}.txt"
   } > "$CONTROL_SRC"
 
+  if [ -f "$TXT_DIR/traj_${TIME}.txt" ]; then
+    notify "[INFO] Output file already exists, skipping simulation for %s\n" "$TIME"
+    continue
+  fi
+
   notify "[INFO] Executing HYSPLIT for $(date -u -d "@$current" +'%Y-%m-%d %H:%M:%S')\n"
 
   cp "$CONTROL_SRC" "$CONTROL_DST"
   cd "$HYSPLIT_EXEC" && ./hyts_std > "output.log" 2>&1
   mv "output.log" "$RUN_DIR/log/output_${TIME}.log"
   cd "$PROJECT_DIR"
+
+  RAW_TXT="$OUTPUT_DIR/traj_${TIME}.txt"
+  PARQUET_OUT="$OUTPUT_DIR/traj_${TIME}.parquet"
+
+  if [ -s "$RAW_TXT" ]; then
+    notify "[INFO] Compressing traj_${TIME}.txt to Parquet...\n"
+    
+    awk '/PRESSURE/{flag=1; next} flag {$1=$1; print}' "$RAW_TXT" | \
+    "$DUCKDB_BIN" -c "COPY (
+      SELECT * FROM read_csv('/dev/stdin', header=False, sep=' ', columns={
+        'traj_id':'INT', 'met_file':'VARCHAR', 'year':'INT', 'month':'INT', 
+        'day':'INT', 'hour':'INT', 'minute':'INT', 'forecast_hour':'INT', 
+        'age':'DOUBLE', 'lat':'DOUBLE', 'long':'DOUBLE', 'height':'DOUBLE', 
+        'pressure':'DOUBLE', 'rain':'DOUBLE', 'blh':'DOUBLE', 'rh':'DOUBLE', 
+        'sphu':'DOUBLE'
+      })
+    ) TO '$PARQUET_OUT' (FORMAT PARQUET, COMPRESSION 'ZSTD');"
+
+    if [ -f "$PARQUET_OUT" ]; then
+      mv "$RAW_TXT" "$TXT_DIR"
+    else
+      notify "[ERROR] Parquet file could not be generated from txt file: ${TIME}.\n"
+      exit 1
+    fi
+  else
+    notify "[ERROR] No output file generated for ${TIME}. Please check the log.\n"
+  fi
 
 done
 

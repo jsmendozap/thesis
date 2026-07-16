@@ -1,7 +1,7 @@
-pacman::p_load(targets, tarchetypes, crew, here)
+pacman::p_load(targets, tarchetypes, crew, here, jsonlite, lubridate)
 
 tar_option_set(
-  controller = crew_controller_local(workers = 4)
+  controller = crew_controller_local(workers = 8)
 )
 
 # Loading functions of R folder
@@ -41,9 +41,19 @@ list(
     description = "post-processing"
   ),
   tar_target(
+    name = years, 
+    command = {
+      start <- read_json(config_file)$date_start |> year()
+      end <- read_json(config_file)$date_end |> year()
+      start:end
+    }, 
+    description = "post-processing"
+  ),
+  tar_target(
     name = moisture_sources,
-    command = identify_sources(trajectories),
-    format = "parquet",
+    command = identify_sources(trajectories, years),
+    pattern = map(years),
+    format = "file",
     description = "post-processing"
   )
 )

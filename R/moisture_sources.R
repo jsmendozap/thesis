@@ -1,13 +1,16 @@
-pacman::p_load(DBI, duckdb, dbplyr, dplyr, arrow)
+pacman::p_load(DBI, duckdb, dbplyr, dplyr, arrow, here)
 
-identify_sources <- function(hysplit_files){
+identify_sources <- function(hysplit_files, year){
+
   con <- dbConnect(duckdb::duckdb())
   on.exit(dbDisconnect(con, shutdown = TRUE))
 
   dbExecute(con, "INSTALL spatial;")
   dbExecute(con, "LOAD spatial;")
 
-  open_dataset(hysplit_files, format = "parquet") %>%
+  path <- here("data", "source", paste0("year=", year))
+  files <- grep(pattern = paste0("hysplit_", year), x = hysplit_files, value = T)
+  open_dataset(files, format = "parquet") %>%
     {duckdb_register_arrow(con, "dataset", .)}
 
   tbl(con, "dataset") %>%
@@ -74,5 +77,7 @@ identify_sources <- function(hysplit_files){
   ) %>%
   select(id, source, contribution, fraction, d_tot, geometry) %>%
   arrange(id) %>%
-  collect() 
+  write_dataset(path = path, format = "parquet")
+  
+  return(path)
 }

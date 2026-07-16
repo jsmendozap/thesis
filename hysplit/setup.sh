@@ -28,7 +28,7 @@ TARBALLS_DIR="$PROJECT_DIR/tarballs"
 RUN_DIR="$PROJECT_DIR/run"
 
 # --- Create project structure ------------------------------------------------
-mkdir -p "$DEPS_DIR" "$BUILD_DIR" "$OUTPUT_DIR" "$DATA_DIR" "$TARBALLS_DIR" "$RUN_DIR" "$RUN_DIR/log"
+mkdir -p "$DEPS_DIR" "$BUILD_DIR" "$OUTPUT_DIR" "$DATA_DIR" "$TARBALLS_DIR" "$RUN_DIR" "$RUN_DIR/log" "$OUTPUT_DIR/original"
 
 # --- Functions ---------------------------------------------------------------
 
@@ -269,5 +269,7 @@ era52arl_cfg
 setup_run_dir
 
 chmod +x "$PROJECT_DIR/run.sh"
+wget https://install.duckdb.org/v1.5.4/duckdb_cli-linux-amd64.zip
+unzip duckdb_cli-linux-aarch64.zip
 
 printf "\n=== Installation complete ===\n"

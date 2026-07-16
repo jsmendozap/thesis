@@ -4,6 +4,7 @@ process_trajectories <- function(file) {
   dt<- gsub("_", "", substr(basename(file), 6, 18))
   path <- here("data", "processed", paste0("hysplit_", dt, ".parquet"))          
 
+  #fread(cmd = paste("gzip -dc", shQuote(file), "| awk '/PRESSURE/{flag=1; next} flag {print}'"), 
   fread(cmd = paste("awk '/PRESSURE/{flag=1; next} flag {print}'",  shQuote(file)), 
         col.names = c("traj_id", "met_file", "year", "month", "day",
                       "hour", "minute", "forecast_hour", "age", "lat",
@@ -14,5 +15,6 @@ process_trajectories <- function(file) {
     select(id, date, age, lat, long, height, pressure, sphu, rh, blh, rain) %>%
     write_parquet(path)
 
+  gc()
   return(path)
 }
