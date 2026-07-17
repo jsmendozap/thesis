@@ -2,14 +2,55 @@
 source "$(dirname "$0")/config.sh"
 
 printf "Starting HYSPLIT parallel execution..\n"
-exec 201> "/tmp/execution.lock"
-flock 201 || { printf "Execution aborted..\n"; exit 0; }
+exec 201> "$STATUS_DIR/execution.lock"
+flock -n 201 || { printf "Execution blocked by active instance.\n"; exit 0; }
+
+MET_REQ_START=$SIM_LOWER
+MET_REQ_END=$SIM_UPPER
+
+if [[ $DIRECTION -eq -1 ]]; then
+  MET_REQ_START=$(( SIM_LOWER - (DURATION * 3600) ))
+fi
+
+Y_REQ_START=$(date -u -d "@$MET_REQ_START" +%Y)
+M_REQ_START=$(( 10#$(date -u -d "@$MET_REQ_START" +%m) ))
+Y_REQ_END=$(date -u -d "@$MET_REQ_END" +%Y)
+M_REQ_END=$(( 10#$(date -u -d "@$MET_REQ_END" +%m) ))
+
+MISSING_MET=false
+Y_CUR=$Y_REQ_START
+M_CUR=$M_REQ_START
+
+while [[ $Y_CUR -lt $Y_REQ_END || ( $Y_CUR -eq $Y_REQ_END && $M_CUR -le $M_REQ_END ) ]]; do
+  printf -v MM "%02d" $M_CUR
+  
+  shopt -s nullglob
+  monthly=("$MET_DIR"/MET_${Y_CUR}_${MM}_*.ARL)
+  shopt -u nullglob
+  
+  if [[ ${#monthly[@]} -eq 0 ]]; then
+    printf "[INFO] Missing meteorology for %s-%s. Execution postponed.\n" "$Y_CUR" "$MM"
+    MISSING_MET=true
+    break 
+  fi
+  
+  ((M_CUR++))
+  if (( M_CUR > 12 )); then
+    M_CUR=1
+    ((Y_CUR++))
+  fi
+done
+
+if [[ "$MISSING_MET" == true ]]; then
+  exit 0
+fi
+
+printf "[OK] All required meteorology available. Preparing HYSPLIT environment...\n"
 
 export POINTS=$(jq -r '.control.points[] | "\(.lat) \(.lon) \(.height)"' "$CFG")
 export NUM_POINTS=$(echo "$POINTS" | wc -l)
 export VERT_METHOD=$(jq -r '.control.vertical_method' "$CFG")
 export TOP_MODEL=$(jq -r '.control.top_model' "$CFG")
-export TR_INTERVAL=$(jq -r '.interval_traj // 24' "$CFG")
 
 TCL_SRC="$PROJECT_DIR/bin/hysplit/guicode/traj_cfg.tcl"
 OUTPUT_CFG="$RUN_DIR/SETUP.CFG"
@@ -56,4 +97,4 @@ for (( current=SIM_LOWER; current<=SIM_UPPER; current+=(TR_INTERVAL * 3600) )); 
   if [ ! -f "$PARQUET_DIR/traj_${TIME}.parquet" ]; then
     echo "$current"
   fi
-done | xargs -I {} -P "$MAX_JOBS" ./simulation.sh "{}"
+done | xargs -I {} -P "$MAX_JOBS" sh -c 'exec "$0" "$@" 201>&-' "$SCRIPTS_DIR/simulation.sh" "{}"

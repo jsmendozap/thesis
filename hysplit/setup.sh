@@ -32,9 +32,10 @@ PARQUET_DIR="$OUTPUT_DIR/parquet"
 MET_DIR="$DATA_DIR/ARL"
 GRIB_DIR="$DATA_DIR/GRIB"
 SCRIPTS_DIR="$PROJECT_DIR/scripts"
+STATUS_DIR="$PROJECT_DIR/status"
 
 # --- Create project structure ------------------------------------------------
-mkdir -p "$DEPS_DIR" "$BIN_DIR" "$OUTPUT_DIR" "$DATA_DIR" "$TARBALLS_DIR" "$RUN_DIR" "$LOG_DIR" "$RAW_DIR" "$PARQUET_DIR" "$MET_DIR" "$GRIB_DIR"
+mkdir -p "$DEPS_DIR" "$BIN_DIR" "$OUTPUT_DIR" "$DATA_DIR" "$TARBALLS_DIR" "$RUN_DIR" "$LOG_DIR" "$RAW_DIR" "$PARQUET_DIR" "$MET_DIR" "$GRIB_DIR" "$STATUS_DIR"
 
 # --- Functions ---------------------------------------------------------------
 
@@ -279,6 +280,6 @@ era52arl_cfg
 setup_run_dir
 
 cd $PROJECT_DIR
-chmod +x "$SCRIPTS_DIR/download.sh"  "$SCRIPTS_DIR/conversion.sh"  "$SCRIPTS_DIR/execution.sh" "$SCRIPTS_DIR/simulation.sh"
+chmod +x "$SCRIPTS_DIR/download.sh"  "$SCRIPTS_DIR/conversion.sh"  "$SCRIPTS_DIR/execution.sh" "$SCRIPTS_DIR/simulation.sh" "$SCRIPTS_DIR/main.sh"
 
 printf "\n=== Installation complete ===\n"
