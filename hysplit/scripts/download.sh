@@ -9,7 +9,7 @@ if [ -f "$PROJECT_DIR/.env" ]; then
 fi
   
 if [ -z "$KEY" ]; then
-    notify "[ERROR] The KEY variable is not defined in the .env file"
+    printf "[ERROR] The KEY variable is not defined in the .env file"
     exit 1
 fi
 
@@ -19,7 +19,7 @@ HOURS=$(seq -f "%02g:00" 0 23 | jq -R . | jq -s -c .)
 AREA=$(jq -c '.area' "$CFG")
 
 echo "$PERIODS" | while IFS='|' read -r YEAR MONTH CHUNK N_CHUNKS DAYS; do
-    notify "[INFO] Processing period: $YEAR-$MONTH (part ${CHUNK}/${N_CHUNKS})\n"
+    printf "[INFO] Processing period: $YEAR-$MONTH (part ${CHUNK}/${N_CHUNKS})\n"
 
     for key in $DATASETS; do
         PRODUCT=$(jq -r ".datasets.$key.name" "$CFG")
@@ -70,9 +70,8 @@ echo "$PERIODS" | while IFS='|' read -r YEAR MONTH CHUNK N_CHUNKS DAYS; do
             [ "$STATUS" = "successful" ] && break
             [ "$STATUS" = "failed" ]     && printf "[ERROR] Job $PRODUCT failed: $JOB_ID" && exit 1
 
-            date -u
             sleep 300
-            date -u
+            printf "[%s] Status: %s\n" "$OUTFILE" "$STATUS"
         done
         
         DOWNLOAD_URL=$(curl -X 'GET' \
@@ -100,5 +99,5 @@ echo "$PERIODS" | while IFS='|' read -r YEAR MONTH CHUNK N_CHUNKS DAYS; do
     done
     
     printf "[INFO] [INFO] Triggering conversion script in background...\n"
-    "$SCRIPTS_DIR/conversion.sh" > "$LOG_DIR/conversion_bg.log" 2>&1 &
+    "$SCRIPTS_DIR/conversion.sh" >> "$LOG_DIR/conversion_bg.log" 2>&1 &
 done

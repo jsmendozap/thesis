@@ -85,6 +85,6 @@ for file in "${FILES[@]}"; do
     printf "[OK] ARL file successfully created: $OUT_FILE\n"
 
     printf "[INFO] Triggering execution checker in background...\n"
-    "$SCRIPTS_DIR/execution.sh" > "$LOG_DIR/execution_bg.log" 2>&1 200>&- &
+    "$SCRIPTS_DIR/execution.sh" >> "$LOG_DIR/execution_bg.log" 2>&1 200>&- &
   fi
 done

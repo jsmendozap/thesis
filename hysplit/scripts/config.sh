@@ -16,37 +16,6 @@ export CFG="$PROJECT_DIR/config.json"
 export DUCKDB_BIN="$PROJECT_DIR/bin/duckdb"
 export STATUS_DIR="$PROJECT_DIR/status"
 
-
-export NOTIFY=true
-if [ "$NOTIFY" = true ]; then
-  if [ ! -f "$PROJECT_DIR/.env" ]; then
-    echo "[ERROR] .env file not found in $PROJECT_DIR"
-    exit 1
-  fi
-
-  export TOKEN=$(sed -n 's/^TOKEN=//p' "$PROJECT_DIR/.env" | tr -d '\"')
-  export CHAT_ID=$(sed -n 's/^CHAT_ID=//p' "$PROJECT_DIR/.env" | tr -d '\"')
-  
-  if [[ -z "$TOKEN" || -z "$CHAT_ID" ]]; then
-    echo "[ERROR] The TOKEN or CHAT ID variables are not defined in the .env file"
-    exit 1
-  fi
-fi
-
-notify() {
-  local MSG
-  printf -v MSG "$@"
-  if [ "$NOTIFY" = true ] && [ -n "$TOKEN" ]; then
-    local CLEAN_MSG=$(echo -n "$MSG" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g')
-    curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
-         -d "chat_id=$CHAT_ID" -d "disable_notification=true" \
-         --data-urlencode "text=$CLEAN_MSG" > /dev/null &
-  fi
-  printf "%s" "$MSG"
-}
-export -f notify
-
-
 export START_DATE=$(jq -r '.date_start' "$CFG")
 export END_DATE=$(jq -r '.date_end' "$CFG")
 export DURATION=$(jq -r '.duration' "$CFG")

@@ -4,6 +4,5 @@ _targets
 data/*
 .Rhistory
 main.R
-output/results.db
-hysplit/config.json
+output/
 hysplit/.env

@@ -1,7 +1,7 @@
-pacman::p_load(targets, tarchetypes, crew, here, jsonlite, lubridate)
+pacman::p_load(targets, tarchetypes, crew, here, jsonlite, tidyverse)
 
 tar_option_set(
-  controller = crew_controller_local(workers = 8)
+  controller = crew_controller_local(workers = 4)
 )
 
 # Loading functions of R folder
@@ -29,30 +29,30 @@ list(
     description = "pre-processing"
   ),
   tar_files(
-    name = raw_trajectories,
-    command = dir(here("data", "raw"), full.names = T),
-    description = "post_processing"
-  ),
-  tar_target(
     name = trajectories,
-    command = process_trajectories(raw_trajectories),
-    pattern = map(raw_trajectories),
-    format = "file",
-    description = "post-processing"
+    command = dir(here("data", "trajectories"), full.names = T),
+    description = "post_processing"
   ),
   tar_target(
     name = years, 
     command = {
-      start <- read_json(config_file)$date_start |> year()
-      end <- read_json(config_file)$date_end |> year()
-      start:end
+      #start <- read_json(config_file)$date_start |> year()
+      #end <- read_json(config_file)$date_end |> year()
+      #start:end
+      1995:1996
     }, 
     description = "post-processing"
   ),
   tar_target(
+    name = files_per_year,
+    command = grep(pattern = paste0("traj_", years), x = trajectories, value = T),
+    pattern = map(years), 
+    description = "post-processing"
+  ),
+  tar_target(
     name = moisture_sources,
-    command = identify_sources(trajectories, years),
-    pattern = map(years),
+    command = identify_sources(files_per_year),
+    pattern = map(files_per_year),
     format = "file",
     description = "post-processing"
   )
