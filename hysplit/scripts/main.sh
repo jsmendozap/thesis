@@ -28,7 +28,7 @@ notify() {
   if [ "$NOTIFY" = true ] && [ -n "$TOKEN" ]; then
     local CLEAN_MSG=$(echo -n "$MSG" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g')
     curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
-         -d "chat_id=$CHAT_ID" -d "disable_notification=true" \
+         -d "chat_id=$CHAT_ID" -d "disable_notification=true" -d "parse_mode=HTML" \
          --data-urlencode "text=$CLEAN_MSG" > /dev/null &
   fi
   printf "%s" "$MSG"
@@ -64,7 +64,7 @@ send_update() {
     P_ARL=$(( EXP_ARLS > 0 ? (ACT_ARLS * 100) / EXP_ARLS : 0 ))
     P_SIM=$(( EXP_SIMS > 0 ? (ACT_SIMS * 100) / EXP_SIMS : 0 ))
 
-    notify "[PROJECT UPDATE]\n\nDOWNLOADS\nCurrent: %d\nExpected: %d\nProgress: %d%%\nState: %s\n\nCONVERSION\nCurrent: %d\nExpected: %d\nProgress: %d%%\nState: %s\n\nTRAJECTORIES\nCurrent: %d\nExpected: %d\nProgress: %d%%\nState: %s\n" \
+    notify "<b>[PROJECT UPDATE]</b>\n\n<b>DOWNLOADS</b>\nCurrent: %d\nExpected: %d\nProgress: %d%%\n%s\n\n<b>CONVERSION</b>\nCurrent: %d\nExpected: %d\nProgress: %d%%\nState: %s\n\n<b>TRAJECTORIES</b>\nCurrent: %d\nExpected: %d\nProgress: %d%%\nState: %s\n" \
     "$ACT_GRIBS" "$EXP_GRIBS" "$P_GRIB" "$DL_STAT" \
     "$ACT_ARLS" "$EXP_ARLS" "$P_ARL" "$CV_STAT" \
     "$ACT_SIMS" "$EXP_SIMS" "$P_SIM" "$SM_STAT"

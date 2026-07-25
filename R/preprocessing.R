@@ -16,6 +16,13 @@ load_aoi <- function(){
   amazonian_col  
 }
 
+basins <- function(aoi) {
+  st_read("https://www.datos.gov.co/resource/5kjg-nuda.geojson") %>%
+    st_intersection(aoi) %>%
+    group_by(nom_zh) %>%
+    summarise()
+}
+
 profile <- function(aoi){
   here("data", "pressure_levels.nc") %>%
     read_stars() %>%

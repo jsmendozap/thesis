@@ -3,6 +3,6 @@ _targets
 .DS_Store
 data/*
 .Rhistory
-main.R
 output/
 hysplit/.env
+commands

@@ -1,6 +1,6 @@
 pacman::p_load(DBI, duckdb, dplyr, dbplyr, arrow, here)
 
-identify_sources <- function(trajectories){
+identify_sources <- function(trajectories, path){
 
   con <- dbConnect(duckdb::duckdb())
   worker_tmp <- tempfile(pattern = "duckdb_", tmpdir  = here("temp"))
@@ -11,14 +11,13 @@ identify_sources <- function(trajectories){
   }, add = TRUE)
 
   dbExecute(con, sprintf("SET temp_directory='%s';", worker_tmp))
-  dbExecute(con, "SET memory_limit='3GB';")
-  dbExecute(con, "SET threads=2;")
+  dbExecute(con, "SET memory_limit='5GB';")
+  dbExecute(con, "SET threads=4;")
 
   dbExecute(con, "INSTALL spatial;")
   dbExecute(con, "LOAD spatial;")
 
   year <- str_extract(trajectories[1], "\\d{4}")
-  path <- here("output", "source", paste0("year=", year))
   dt<- gsub("_", "", substr(basename(trajectories[1]), 6, 18))
 
   open_dataset(trajectories, format = "parquet") %>%
