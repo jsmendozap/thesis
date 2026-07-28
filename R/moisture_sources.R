@@ -1,8 +1,8 @@
-pacman::p_load(DBI, duckdb, dplyr, dbplyr, arrow, here)
+pacman::p_load(DBI, duckdb, duckspatial, dplyr, dbplyr, arrow, here)
 
-identify_sources <- function(trajectories, path){
+identify_sources <- function(trajectories, path, grid){
 
-  con <- dbConnect(duckdb::duckdb())
+  con <- ddbs_create_conn(threads = 4, memory_limit_gb = 5)
   worker_tmp <- tempfile(pattern = "duckdb_", tmpdir  = here("temp"))
   
   on.exit({
@@ -11,12 +11,7 @@ identify_sources <- function(trajectories, path){
   }, add = TRUE)
 
   dbExecute(con, sprintf("SET temp_directory='%s';", worker_tmp))
-  dbExecute(con, "SET memory_limit='5GB';")
-  dbExecute(con, "SET threads=4;")
-
-  dbExecute(con, "INSTALL spatial;")
-  dbExecute(con, "LOAD spatial;")
-
+  
   year <- str_extract(trajectories[1], "\\d{4}")
   dt<- gsub("_", "", substr(basename(trajectories[1]), 6, 18))
 
@@ -44,6 +39,15 @@ identify_sources <- function(trajectories, path){
       # surface processes and therefore is labeled differently (e). 
       # Average values of parcel's height and blh between [t, t - 1] are used to take into account
       # spatial and temporal variability in this measurements. 
+
+      # There are 3 possibles humidity sources according Sodemann: 
+      # * Surface evaporation 
+      # * Contributions from processes above the boundary layer
+      # * Fraction of unknown origin (d_tot)
+      # d_tot might be the result of: 
+      # * pre-existent humidity: At the beginning of the trajectory the air's parcel already contained a portion of moisture
+      # In that case, the algorithm can't attribuite a evaporation source since it happened outside the temporal range.
+      # * Sub-threshold increments: Any increase of humidity < Δqc is discarded under the assumpsion this is a numerical error.
       source = case_when(
         delta > 0.03 & (height + lag(height))/2 <= 1.5 * (blh + lag(blh))/2 ~ "bl",
         delta > 0.03 & (height + lag(height))/2 > 1.5 * (blh + lag(blh))/2 ~ "e",
@@ -66,28 +70,20 @@ identify_sources <- function(trajectories, path){
     mutate(
       # The total percentage of moisture decrease along the whole trajectory is given by the cummulative
       # product of all the individuals fractions of remained humidity: f = ∏αi = exp(∑log(αi))
-      survival_factor = ifelse(alpha <= 0, 1e-4, alpha) %>% log() %>% cumsum() %>% exp(),
+      survival_factor = ifelse(alpha <= 0, 1e-2, alpha) %>% log() %>% cumsum() %>% exp(),
       contribution = ifelse(!is.na(source), delta * survival_factor, 0),
       # Fractional contribution of every source is obtained by dividing by sphu at t = 0
-      sphu_t0 = ifelse(age == 0, sphu, NA) %>% min(na.rm = T),
-      fraction = ifelse(contribution != 0, contribution/sphu_t0, 0),
-      # There are 3 possibles humidity sources according Sodemann: 
-      # * Surface evaporation 
-      # * Contributions from processes above the boundary layer
-      # * Fraction of unknown origin (d_tot)
-      # d_tot might be the result of: 
-      # * pre-existent humidity: At the beginning of the trajectory the air's parcel already contained a portion of moisture
-      # In that case, the algorithm can't attribuite a evaporation source since it happened outside the temporal range.
-      # * Sub-threshold increments: Any increase of humidity < Δqc is discarded under the assumpsion this is a numerical error.
-      d_tot = 1  - sum(fraction, na.rm = T)
+      sphu_t0 = ifelse(age == 0, sphu, 0) %>% max(na.rm = T)
     ) %>%
+    filter(sphu_t0 > 1e-6) %>%
+    mutate(fraction = ifelse(contribution != 0, contribution/sphu_t0, 0)) %>%
     ungroup() %>%
     filter(!is.na(source)) %>%
     mutate(
       geometry = ST_Point(long, lat),
       id = as.character(id)
     ) %>%
-    select(id, source, contribution, fraction, d_tot, geometry) %>%
+    select(id, source, contribution, fraction, geometry) %>%
     arrange(id) %>%
     to_arrow() %>%
     write_dataset(path = path, format = "parquet")

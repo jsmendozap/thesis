@@ -27,8 +27,22 @@ list(
   tar_target(
     name = moisture_profile_plot,
     command = moisture_profile(sphu_profile),
+    format = "file",
     description = "exploration",
-    format = "file"
+  ),
+  tar_target(
+    name = config_file,
+    command = setup(
+      profile = sphu_profile, aoi = aoi,
+      path = here("hysplit", "config.json")
+    ),
+    format = "file",
+    description = "simulation-setup"
+  ),
+  tar_target(
+    name = land_ocean_mask,
+    command = get_mask(config_file),
+    description = "mask"
   ),
   tar_target(
     name = calibration_dir,
@@ -59,13 +73,9 @@ list(
     description = "calibration"
   ),
   tar_target(
-    name = config_file,
-    command = setup(
-      profile = sphu_profile, aoi = aoi,
-      path = here("hysplit", "config.json")
-    ),
-    format = "file",
-    description = "pre-processing"
+    name = metrics, 
+    command = calibration_metrics(calibration, land_ocean_mask),
+    pattern = map(calibration)
   ),
   tar_files(
     name = trajectories,
@@ -87,7 +97,7 @@ list(
     command = {
       files <- grep(pattern = paste0("traj_", years), x = trajectories, value = TRUE)
       out_dir <- here("output", "source", paste0("year=", years))
-      identify_sources(files_per_year, out_dir)
+      identify_sources(files, out_dir)
     },
     pattern = map(years),
     format = "file",
