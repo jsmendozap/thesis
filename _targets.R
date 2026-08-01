@@ -11,24 +11,20 @@ tar_source()
 list(
   tar_target(
     name = aoi,
-    command = load_aoi(),
-    description = "pre-processing"
+    command = load_aoi()
   ),
   tar_target(
     name = hydrological_zones, 
-    command = basins(aoi),
-    description = "pre-processing"
+    command = basins(aoi)
   ),
   tar_target(
     name = sphu_profile,
-    command = profile(aoi = aoi),
-    description = "exploration"
+    command = profile(aoi = aoi)
   ),
   tar_target(
     name = moisture_profile_plot,
     command = moisture_profile(sphu_profile),
-    format = "file",
-    description = "exploration",
+    format = "file"
   ),
   tar_target(
     name = config_file,
@@ -37,12 +33,11 @@ list(
       path = here("hysplit", "config.json")
     ),
     format = "file",
-    description = "simulation-setup"
+    cue = tar_cue(mode = "never")
   ),
   tar_target(
     name = land_ocean_mask,
-    command = get_mask(config_file),
-    description = "mask"
+    command = get_mask(config_file)
   ),
   tar_target(
     name = calibration_dir,
@@ -50,37 +45,54 @@ list(
       path = here("data", "calibration"), 
       type = "directory",
       recurse = T, 
-      regexp = "\\d{4}/[^/]+/\\d+"
-    ),
-    description = "calibration"
+      regexp = "\\d{4}/[^/]+"
+    )
   ),
   tar_target(
     name = calibration, 
     command = {
       files <- dir_ls(calibration_dir, type = 'file', glob = "*.parquet")
-      parts <- strsplit(as.character(calibration_dir), "/")[[1]]
-      n <- length(parts)
-
-      out_dir <- here("output", "calibration", 
-                      paste0("year=", parts[n - 2]), 
-                      paste0("month=", parts[n - 1]), 
-                      paste0("duration=", parts[n]))
-
-      identify_sources(files, out_dir)
+      out_dir <- str_replace(calibration_dir, "data", "output")
+      identify_sources(files, out_dir, land_ocean_mask)
     },
     pattern = map(calibration_dir),
-    format = "file",
-    description = "calibration"
+    format = "file"
   ),
   tar_target(
-    name = metrics, 
-    command = calibration_metrics(calibration, land_ocean_mask),
+    name = duration, 
+    command = trajectory_duration(calibration),
     pattern = map(calibration)
+  ),
+  tar_target(
+    name = points, 
+    command = trajectory_points(calibration),
+    pattern = map(calibration),
+  ),
+  tar_target(
+    name = results_calibration,
+    command = calibration_plots(duration, points),
+    format = "file"
+  ),
+  tar_target(
+    name = final_config, 
+    command = {
+      config <- read_json(here("hysplit", "config.json"), simplifyVector = T)
+      params <- simulation_parameters(duration, points)
+
+      config$control$points <- config %>%
+        pluck("control", "points") %>%
+        group_by(height) %>%
+        slice_sample(n = params$max_trajectories/30)
+
+      config$duration <- params$max_duration
+      write_json(config, here("hysplit", "simulation_config.json"), pretty = T, auto_unbox = T)
+    }, 
+    format = "file",
+    cue = tar_cue(mode = "never")
   ),
   tar_files(
     name = trajectories,
-    command = dir(here("data", "trajectories"), full.names = T),
-    description = "post_processing"
+    command = dir(here("data", "trajectories"), full.names = T)
   ),
   tar_target(
     name = years, 
@@ -89,8 +101,7 @@ list(
       #end <- read_json(config_file)$date_end |> year()
       #start:end
       1995:1996
-    }, 
-    description = "post-processing"
+    }
   ),
   tar_target(
     name = moisture_sources,
@@ -100,7 +111,6 @@ list(
       identify_sources(files, out_dir)
     },
     pattern = map(years),
-    format = "file",
-    description = "post-processing"
+    format = "file"
   )
 )

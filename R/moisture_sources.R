@@ -1,6 +1,6 @@
 pacman::p_load(DBI, duckdb, duckspatial, dplyr, dbplyr, arrow, here)
 
-identify_sources <- function(trajectories, path, grid){
+identify_sources <- function(trajectories, path, mask){
 
   con <- ddbs_create_conn(threads = 4, memory_limit_gb = 5)
   worker_tmp <- tempfile(pattern = "duckdb_", tmpdir  = here("temp"))
@@ -9,18 +9,22 @@ identify_sources <- function(trajectories, path, grid){
     dbDisconnect(con, shutdown = TRUE)
     unlink(worker_tmp, recursive = TRUE)
   }, add = TRUE)
-
+  
+  duckdb_register(con, "mask_grid", mask)
   dbExecute(con, sprintf("SET temp_directory='%s';", worker_tmp))
   
-  year <- str_extract(trajectories[1], "\\d{4}")
-  dt<- gsub("_", "", substr(basename(trajectories[1]), 6, 18))
+  #paths <- paste0("'", trajectories, "'", collapse = ", ")
 
-  open_dataset(trajectories, format = "parquet") %>%
+  #tbl(con, sql(sprintf("SELECT *, filename AS src_file FROM read_parquet([%s], filename=TRUE)", paths))) %>%
+  #  mutate(
+  #    file_basename = sql("regexp_extract(src_file, '([^/]+)$')"),
+  #    dt_str = sql("REPLACE(SUBSTRING(file_basename, 6, 13), '_', '')"),
+  #    id = as.numeric(paste0(dt_str, lpad(as.character(traj_id), 3L, '0'))),
+  #    year_ext = as.integer(sql("regexp_extract(file_basename, '\\d{4}')")),
+  #    date = make_timestamp(year_ext, month, day, hour, minute, 0)
+  #  ) %>%
+  open_dataset(trajectories) %>%
     to_duckdb(con = con) %>%
-    mutate(
-      date = make_timestamp(year, month, day, hour, minute, 0),
-      id = as.numeric(paste0(dt, lpad(as.character(traj_id), as.integer(3), "0")))
-    ) %>%
     # Grouping by trajectory
     group_by(id) %>% 
     # Section 2.1 - Moisture sources identification
@@ -30,6 +34,7 @@ identify_sources <- function(trajectories, path, grid){
     # Ensuring every trajectory will be ordered by age for upcoming compuations 
     window_order(age) %>%
     mutate(
+      #sphu = (sphu + coalesce(lag(sphu, 1), sphu) + coalesce(lag(sphu, 2), sphu)) / 3,
     # Step 2: Computing change in specific humidity in every timestep
       delta = sphu - lag(sphu),
     # Step 3 and 4: Evaporation sources are identified where the following conditions matches: 
@@ -80,10 +85,20 @@ identify_sources <- function(trajectories, path, grid){
     ungroup() %>%
     filter(!is.na(source)) %>%
     mutate(
+      lon_idx = as.integer(floor(long * 4)),
+      lat_idx = as.integer(floor(lat * 4))
+    ) %>%
+    select(id, age, source, contribution, fraction, long, lat, lon_idx, lat_idx) %>%
+    compute() %>%
+    inner_join(
+      tbl(con, "mask_grid"), 
+      by = c("lon_idx", "lat_idx")
+    ) %>%
+    mutate(
       geometry = ST_Point(long, lat),
       id = as.character(id)
     ) %>%
-    select(id, source, contribution, fraction, geometry) %>%
+    select(id, age, source, contribution, fraction, location, geometry) %>%
     arrange(id) %>%
     to_arrow() %>%
     write_dataset(path = path, format = "parquet")

@@ -104,16 +104,16 @@ mv "$HYSPLIT_CLONE/exec/traj_${TIME}.txt" "$TEMP_RAW_TXT"
 
 if [ -s "$TEMP_RAW_TXT" ]; then
   printf "[INFO] Converting traj_${TIME}.txt to Parquet...\n"
+  TIME_PREFIX=$(echo "$TIME" | tr -d '_')
 
-  awk '/PRESSURE/{flag=1; next} flag {$1=$1; print}' "$TEMP_RAW_TXT" | \
+  awk '/PRESSURE/{flag=1; next} flag {$1=$1; print $1, $9, $10, $11, $12, $14, $15, $17}' "$TEMP_RAW_TXT" | \
   "$DUCKDB_BIN" -c "COPY (
-    SELECT * FROM read_csv('/dev/stdin', header=False, sep=' ', columns={
-      'traj_id':'INT', 'met_file':'VARCHAR', 'year':'INT', 'month':'INT', 
-      'day':'INT', 'hour':'INT', 'minute':'INT', 'forecast_hour':'INT', 
-      'age':'DOUBLE', 'lat':'DOUBLE', 'long':'DOUBLE', 'height':'DOUBLE', 
-      'pressure':'DOUBLE', 'rain':'DOUBLE', 'blh':'DOUBLE', 'rh':'DOUBLE', 
-      'sphu':'DOUBLE'
-    })
+  SELECT '${TIME_PREFIX}' || LPAD(CAST(traj_id AS VARCHAR), 4, '0') AS id,
+    age, lat, long, height, rain, blh, sphu
+  FROM read_csv('/dev/stdin', auto_detect=False, header=False, delim=' ', columns={
+    'traj_id':'INTEGER', 'age':'DOUBLE', 'lat':'DOUBLE', 'long':'DOUBLE', 'height':'DOUBLE',
+    'rain':'DOUBLE', 'blh':'DOUBLE', 'sphu':'DOUBLE'
+  })
   ) TO '$PARQUET_OUT' (FORMAT PARQUET, COMPRESSION 'ZSTD');"
 
   if [ -f "$PARQUET_OUT" ]; then

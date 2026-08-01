@@ -51,7 +51,7 @@ echo "$PERIODS" | while IFS='|' read -r YEAR MONTH CHUNK N_CHUNKS DAYS; do
         } + (if .pressure_levels then { "pressure_level": .pressure_levels } else {} end)' "$CFG")
 
         BODY=$(jq -n --argjson req "$REQUEST" '{"inputs": $req}')
-        JOB=$(curl -sS -X POST \
+        JOB=$(curl -sS --fail -X POST \
             --retry 5 --retry-delay 10 --retry-all-errors \
             -H "PRIVATE-TOKEN: $KEY" \
             -H "Content-Type: application/json" \
@@ -68,7 +68,7 @@ echo "$PERIODS" | while IFS='|' read -r YEAR MONTH CHUNK N_CHUNKS DAYS; do
         printf "\n[INFO] Job submitted for $key: $YEAR-$MONTH\n"
 
         while true; do
-            RAW_STATUS=$(curl -sS -X 'GET' \
+            RAW_STATUS=$(curl -sS --fail -X 'GET' \
             --retry 5 --retry-delay 10 --retry-all-errors \
             "$BASE_URL/jobs/$JOB_ID?qos=false&request=false&log=false&allow_unauthenticated=false" \
             -H "accept: application/json" \
@@ -88,7 +88,7 @@ echo "$PERIODS" | while IFS='|' read -r YEAR MONTH CHUNK N_CHUNKS DAYS; do
             sleep 300
         done
         
-        DOWNLOAD_REQUEST=$(curl -sS -X 'GET' \
+        DOWNLOAD_REQUEST=$(curl -sS --fail -X 'GET' \
             --retry 5 --retry-delay 10 --retry-all-errors \
             -H "accept: application/json" \
             -H "PRIVATE-TOKEN: $KEY")
@@ -97,7 +97,7 @@ echo "$PERIODS" | while IFS='|' read -r YEAR MONTH CHUNK N_CHUNKS DAYS; do
 
         printf "\n"
 
-        curl -L --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors --progress-bar \
+        curl -L --fail --retry 5 --retry-delay 10 --retry-max-time 300 --retry-all-errors --progress-bar \
             -H "PRIVATE-TOKEN: $KEY" -o "$GRIB_DIR/$OUTFILE.tmp" "$DOWNLOAD_URL"
         
         if [ $? -eq 0 ]; then
