@@ -3,7 +3,6 @@ pacman::p_load(arrow, tidyverse, duckdb, duckspatial, DBI, here)
 trajectory_duration <- function(dataset) {
     worker_tmp <- tempfile(pattern = "duckdb_", tmpdir = here("temp"))
     con <- ddbs_create_conn(threads = 4, memory_limit_gb = 5)
-    worker_tmp <- tempfile(pattern = "duckdb_", tmpdir = here("temp"))
 
     on.exit(
         {
@@ -15,6 +14,7 @@ trajectory_duration <- function(dataset) {
 
     dbExecute(con, sprintf("SET temp_directory='%s';", worker_tmp))
 
+    # Define time limits from 1 to 15 days (in hours) to test how trajectory length affects the results
     cuts <- tibble(durations = seq(24, 360, 24))
     duckdb_register(con, "temporal_cuts", cuts)
 
@@ -24,26 +24,32 @@ trajectory_duration <- function(dataset) {
     base_tbl <- open_dataset(dataset, format = "parquet") %>%
         to_duckdb(con = con)
 
+    # Count all unique trajectories arriving at the destination.
     total_trajectories <- base_tbl %>%
         summarise(n = n_distinct(id, na.rm = TRUE)) %>%
         pull(n)
 
     base_tbl %>%
+        # Match each moisture event with every duration threshold
         cross_join(tbl(con, "temporal_cuts")) %>%
+        # Keep moisture events that occurred within the duration limit
         filter(age >= -durations) %>%
         group_by(durations, location) %>%
+        # Calculate the relative moisture contribution of each source
         summarise(
-            fraction = sum(fraction, na.rm = TRUE) / total_trajectories,
-            puntos = n(),
+            fraction = sum(fractional_contribution, na.rm = TRUE) /
+                total_trajectories,
+            source_points = n(),
             .groups = "drop"
         ) %>%
         collect() %>%
         pivot_wider(
             names_from = location,
-            values_from = c(fraction, puntos),
-            values_fill = list(fraction = 0, puntos = 0)
+            values_from = c(fraction, source_points),
+            values_fill = list(fraction = 0, source_points = 0)
         ) %>%
         mutate(
+            # Calculate what is missing to reach 100%. This is the moisture from uncaptured sources.
             unknown_origin = 1 - (fraction_Land + fraction_Ocean),
             year = simulation_year,
             month = simulation_month
