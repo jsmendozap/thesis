@@ -1,38 +1,77 @@
-pacman::p_load(tidyverse, here)
+pacman::p_load('tidyverse', 'here')
 
-moisture_profile <- function(profile){
-
+moisture_profile <- function(profile) {
   profile %>%
     summarise(q = mean(q), .by = level) %>%
     arrange(desc(level)) %>%
-    mutate(percentage = cumsum(q)/sum(q) * 100) %>%
-    filter(level == units::as_units("300 millibars")) %>%
+    mutate(percentage = cumsum(q) / sum(q) * 100) %>%
+    filter(level %in% "300") %>%
     pull(percentage) %>%
-    {sprintf("Water humidity accumulated at 300 mb: %s%%", round(., 2))} %>%
+    {
+      sprintf("Water humidity accumulated at 300 mb: %s%%", round(., 2))
+    } %>%
     cat()
 
-  p <-profile %>% 
-    arrange(desc(level)) %>%
-    mutate(level = as.integer(level), q = cumsum(q) / sum(q)) %>%
-    summarise(flux = mean(flux), q = mean(q), .by = level) %>%
+  data <- profile %>%
+    arrange(level) %>%
+    mutate(
+      level = as.character(level) %>% as.integer,
+      q = cumsum(q) / sum(q)
+    ) %>%
+    summarise(flux = mean(flux), q = mean(q), .by = level)
+
+  fn <- approxfun(x = data$level, y = data$flux, rule = 2)
+  sampling_points <- profile %>%
+    group_by(level) %>%
+    summarise(flux = mean(flux)) %>%
+    arrange(level) %>%
+    mutate(
+      flux_cum = cumsum(flux) / sum(flux),
+      level = as.character(level) %>% as.integer
+    ) %>%
+    {
+      approxfun(.$flux_cum, .$level)
+    } %>%
+    {
+      .(seq(0.05, 0.99, length.out = 30))
+    } %>%
+    round(-1) %>%
+    {
+      data.frame(level = .)
+    } %>%
+    mutate(x_coord = fn(level))
+
+  p <- data %>%
     ggplot(aes(y = level)) +
     geom_path(aes(x = flux), linewidth = 0.8, col = 'darkgreen') +
-    geom_point(aes(x = flux), col = "darkgreen", size = 2) +
-    geom_path(aes(x = q * 0.052), linewidth = 0.8, col = 'blue', linetype = "dashed") +
-    geom_point(aes(x = q * 0.052), col = "blue", size = 2) +
-    scale_y_reverse(n.breaks = 20, 
-                    sec.axis = sec_axis(
-                      transform = ~ 8000 * log(1014 / .x) / 1000,
-                      breaks = seq(0, 20, 2),
-                      name = "Altitude (Km)"
-                    )) +
+    geom_point(
+      data = sampling_points,
+      aes(x = x_coord, y = level),
+      shape = 21,
+      fill = "darkgray",
+      size = 1.5
+    ) +
+    geom_path(
+      aes(x = q * 0.052),
+      linewidth = 0.8,
+      col = 'blue',
+      linetype = "dashed"
+    ) +
+    scale_y_reverse(
+      n.breaks = 20,
+      sec.axis = sec_axis(
+        transform = ~ 8000 * log(1014 / .x) / 1000,
+        breaks = seq(0, 20, 2),
+        name = "Altitude (Km)"
+      )
+    ) +
     scale_x_continuous(
-      name = "Mean humidity flux (g/kg * m/s)", 
+      name = "Mean humidity flux (g/kg * m/s)",
       n.breaks = 10,
       sec.axis = sec_axis(
         transform = ~ . / 0.052,
         name = "Cumulative specific humidity from surface",
-        labels = scales::percent 
+        labels = scales::percent
       )
     ) +
     labs(x = "Mean humidity flux", y = "Pressure level (hPa)") +
@@ -41,11 +80,8 @@ moisture_profile <- function(profile){
       axis.title.x.top = element_text(color = "blue"),
       axis.title.x.bottom = element_text(color = "darkgreen")
     )
-  
+
   ggsave("moisture_profile.png", path = here("plots"))
 
   return(here("plots", "moisture_profile.png"))
 }
-
-
-

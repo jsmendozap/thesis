@@ -1,4 +1,13 @@
 list(
+    tar_target(
+        name = vertical_profile_plots,
+        command = vertical_exploration_plots(
+            profile = sphu_profile,
+            single_levels = here("data", "single_levels.nc"),
+            aoi = aoi
+        ),
+        format = "file"
+    ),
     tar_files(
         name = trajectories,
         command = dir(here("data", "trajectories"), full.names = TRUE)
