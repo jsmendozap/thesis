@@ -11,7 +11,7 @@ simulation_parameters <- function(duration, points) {
         pull(durations) %>%
         max()
 
-    points_smooth <- tar_read(points) %>%
+    points_smooth <- points %>%
         group_by(year, month) %>%
         arrange(size, .by_group = TRUE) %>%
         mutate(

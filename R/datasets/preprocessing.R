@@ -66,7 +66,7 @@ profile <- function(aoi) {
     read_stars() %>%
     st_set_crs(4326) %>%
     .[aoi] %>%
-    transmute(flux = q * sqrt(u^2 + v^2), q, w) %>%
+    mutate(flux = q * sqrt(u^2 + v^2), q, w) %>%
     st_apply(c("level", "time"), mean, na.rm = TRUE) %>%
     as.data.frame() %>%
     mutate(
