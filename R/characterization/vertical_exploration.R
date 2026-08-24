@@ -253,10 +253,7 @@ flux_trend <- function(profile) {
 
   profile_trend_summary <- profile_overview %>%
     filter(level %in% c(775, 950)) %>%
-    mutate(
-      level = factor(level) #,
-      #value = ifelse(variable != "ws", value * 100, value)
-    ) %>%
+    mutate(level = factor(level)) %>%
     group_by(level, variable) %>%
     mutate(
       t = row_number(),
@@ -277,10 +274,7 @@ flux_trend <- function(profile) {
 
   p3 <- profile_overview %>%
     filter(level %in% c(775, 950)) %>%
-    mutate(
-      level = factor(level) #,
-      #value = ifelse(variable != "ws", value * 100, value)
-    ) %>%
+    mutate(level = factor(level)) %>%
     ggplot(aes(x = ym)) +
     geom_line(aes(y = value - season_year), color = "grey75", alpha = 0.6) +
     geom_line(aes(y = trend), color = "#b2182b", linewidth = 1) +

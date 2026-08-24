@@ -18,10 +18,10 @@ trajectory_duration <- function(dataset) {
     cuts <- tibble(durations = seq(24, 360, 24))
     duckdb_register(con, "temporal_cuts", cuts)
 
-    simulation_year <- str_match(dataset, "year=(\\d{4})")[, 2] %>% as.integer()
-    simulation_month <- str_match(dataset, "month=([a-z]+)")[, 2]
+    simulation_year <- str_extract(dataset, "(?<=year=)[0-9]{4}")
+    simulation_month <- str_extract(dataset, "(?<=month=)[0-9]{2}")
 
-    base_tbl <- open_dataset(dataset, format = "parquet") %>%
+    base_tbl <- open_dataset(dataset) %>%
         to_duckdb(con = con)
 
     # Count all unique trajectories arriving at the destination.
@@ -32,8 +32,9 @@ trajectory_duration <- function(dataset) {
     base_tbl %>%
         # Match each moisture event with every duration threshold
         cross_join(tbl(con, "temporal_cuts")) %>%
-        # Keep moisture events that occurred within the duration limit
+        # Restrict thermodynamic history to the evaluated backward duration threshold.
         filter(age >= -durations) %>%
+        mutate(location = if_else(is_ocean, "Ocean", "Land")) %>%
         group_by(durations, location) %>%
         # Calculate the relative moisture contribution of each source
         summarise(

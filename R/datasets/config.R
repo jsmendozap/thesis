@@ -34,28 +34,48 @@ library(jsonlite)
 #' }
 #'
 
-project_setup <- function(path,
-                          date.start,
-                          date.end,
-                          duration,
-                          bbox,
-                          points,
-                          top.model,
-                          vertical.method,
-                          interval.traj = 24,
-                          download = T,
-                          pres.levels = c(seq(100, 250, 25), seq(300, 750, 50), seq(775, 1000, 25)),
-                          pres.vars = NULL,
-                          sfc.vars = NULL,
-                          setup = NULL,
-                          output.vars = NULL) {
-  if (!inherits(bbox, "bbox")) stop("bbox must be of class 'bbox'")
-
-  if (!inherits(points, "data.frame") || dim(points)[2] != 3 || !all(c("lat", "lon", "height") %in% names(points))) {
-    stop("Points must be a data.frame with columns: lat, lon, height.")
+project_setup <- function(
+  path,
+  date.start,
+  date.end,
+  duration,
+  bbox,
+  points,
+  top.model,
+  vertical.method,
+  interval.traj = 24,
+  download = T,
+  pres.levels = c(seq(100, 250, 25), seq(300, 750, 50), seq(775, 1000, 25)),
+  pres.vars = NULL,
+  sfc.vars = NULL,
+  setup = NULL,
+  output.vars = NULL
+) {
+  if (!inherits(bbox, "bbox")) {
+    stop("bbox must be of class 'bbox'")
   }
 
-  out.vars <- c("tm_tpot", "tm_tamb", "tm_rain", "tm_mixd", "tm_relh", "tm_sphu", "tm_mixr", "tm_dswf", "tm_terr", "tm_uwnd", "tm_vwnd")
+  if (
+    !inherits(points, "data.frame") ||
+      dim(points)[2] < 3 ||
+      !all(c("lat", "lon", "height") %in% names(points))
+  ) {
+    stop("Points must be a data.frame with at least columns: lat, lon, height.")
+  }
+
+  out.vars <- c(
+    "tm_tpot",
+    "tm_tamb",
+    "tm_rain",
+    "tm_mixd",
+    "tm_relh",
+    "tm_sphu",
+    "tm_mixr",
+    "tm_dswf",
+    "tm_terr",
+    "tm_uwnd",
+    "tm_vwnd"
+  )
   if (!is.null(output.vars) && !all(output.vars %in% out.vars)) {
     stop("Output variables must be one of: ", paste(out.vars, collapse = ", "))
   }
@@ -86,7 +106,8 @@ project_setup <- function(path,
           "relative_humidity",
           "vertical_velocity",
           pres.vars
-        ) |> unique()
+        ) |>
+          unique()
       ),
       surface = list(
         name = "reanalysis-era5-single-levels",
@@ -96,13 +117,18 @@ project_setup <- function(path,
           "10m_v_component_of_wind",
           "2m_temperature",
           sfc.vars
-        ) |> unique()
+        ) |>
+          unique()
       )
     )
   }
 
-  if (!is.null(setup)) config$setup <- setup
-  if (!is.null(output.vars)) config$output <- output.vars
+  if (!is.null(setup)) {
+    config$setup <- setup
+  }
+  if (!is.null(output.vars)) {
+    config$output <- output.vars
+  }
 
   write_json(x = config, path = path, pretty = T, auto_unbox = T)
 }

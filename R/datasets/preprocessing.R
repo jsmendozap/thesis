@@ -3,27 +3,25 @@ pacman::p_load(
   'sf',
   'stars',
   'terra',
-  'arcgislayers',
   'jsonlite',
   'rnaturalearth',
-  'here'
+  'here',
+  'nanoparquet'
 )
 
 load_aoi <- function() {
+  col <- ne_countries(country = "Colombia", returnclass = "sf") %>%
+    st_geometry()
+
   url <- "https://data.hydrosheds.org/file/HydroBASINS/standard/hybas_sa_lev03_v1c.zip"
 
-  amazonian <- st_read(paste0("/vsizip/vsicurl/", url)) %>%
-    filter(HYBAS_ID == 6030007000) %>%
+  st_read(
+    paste0("/vsizip/vsicurl/", url),
+    query = "SELECT * FROM hybas_sa_lev03_v1c WHERE HYBAS_ID = 6030007000"
+  ) %>%
     st_make_valid() %>%
-    st_geometry()
-
-  col <- ne_countries() %>%
-    select(name) %>%
-    filter(name == "Colombia") %>%
-    st_geometry()
-
-  amazonian_col <- st_intersection(col, amazonian)
-  amazonian_col
+    st_geometry() %>%
+    st_intersection(col)
 }
 
 basins <- function(aoi) {
@@ -33,32 +31,95 @@ basins <- function(aoi) {
     summarise()
 }
 
-get_mask <- function(config) {
-  url <- "https://services.arcgis.com/jIL9msH9OI208GCb/ArcGIS/rest/services/Ocean_and_Country_Polygon_Masks/FeatureServer/91"
-
+get_mask <- function(config, aoi, path) {
   bbox <- read_json(config, simplifyVector = T)$area %>%
     {
       st_bbox(c(xmin = .[2], xmax = .[4], ymax = .[1], ymin = .[3]))
     }
 
-  land_ocean_mask <- arc_open(url) %>%
-    arc_select(fields = "LAND_OR_OCEAN", filter_geom = bbox) %>%
-    st_make_valid()
+  wkt <- st_as_sfc(bbox) %>% st_as_text()
+  template <- rast(ext(bbox), res = 0.01, crs = "EPSG:4326")
 
-  rast(
-    ext(bbox),
-    res = 0.25,
-    crs = "EPSG:4326"
+  countries <- ne_countries(scale = 10) %>%
+    st_make_valid() %>%
+    st_crop(bbox) %>%
+    rasterize(template, field = "sovereignt")
+
+  names(countries) <- "country"
+
+  url <- "https://storage.googleapis.com/teow2016/Ecoregions2017.zip"
+  ecoregions <- st_read(
+    paste0("/vsizip/vsicurl/", url),
+    wkt_filter = wkt,
+    quiet = TRUE
   ) %>%
-    {
-      rasterize(x = land_ocean_mask, y = ., field = "LAND_OR_OCEAN")
-    } %>%
+    st_make_valid() %>%
+    st_crop(bbox) %>%
+    rasterize(template, field = "ECO_NAME")
+
+  names(ecoregions) <- "ecoregion"
+
+  sf_use_s2(FALSE)
+  oceans <- ne_download(
+    scale = 10,
+    type = "geography_marine_polys",
+    category = "physical"
+  ) %>%
+    st_make_valid() %>%
+    st_crop(bbox) %>%
+    rasterize(template, field = "name")
+
+  sf_use_s2(TRUE)
+  names(oceans) <- "ocean"
+
+  amazonian_col <- aoi %>%
+    st_as_sf() %>%
+    rasterize(template)
+
+  names(amazonian_col) <- "is_aoi"
+
+  basins <- st_read("https://www.datos.gov.co/resource/5kjg-nuda.geojson") %>%
+    st_intersection(aoi) %>%
+    group_by(nom_zh) %>%
+    summarise() %>%
+    st_make_valid() %>%
+    rasterize(template, field = "nom_zh")
+
+  names(basins) <- "hydrological_zone"
+
+  c(countries, ecoregions, oceans, amazonian_col, basins) %>%
     as.data.frame(xy = TRUE) %>%
     mutate(
-      lon_idx = as.integer(floor(x * 4)),
-      lat_idx = as.integer(floor(y * 4))
+      lon_idx = as.integer(floor(x * 100)),
+      lat_idx = as.integer(floor(y * 100)),
+
+      is_ocean = is.na(country),
+      country_or_ocean = case_when(
+        is_ocean ~ coalesce(ocean, "Coastal Waters"),
+        TRUE ~ country
+      ),
+
+      source_domain = case_when(
+        is_ocean ~ country_or_ocean,
+        !is.na(ecoregion) ~ paste(country_or_ocean, ecoregion, sep = " - "),
+        TRUE ~ paste0(country_or_ocean, "Unclassified Ecoregion", sep = " - ")
+      ),
+
+      is_aoi = !is.na(is_aoi)
     ) %>%
-    select(lon_idx, lat_idx, location = LAND_OR_OCEAN)
+    select(
+      lon_idx,
+      lat_idx,
+      country_or_ocean,
+      ecoregion,
+      is_aoi,
+      is_ocean,
+      hydrological_zone,
+      source_domain
+    ) %>%
+    write_parquet(path, compression = "ZSTD")
+
+  return(path)
 }
 
 profile <- function(aoi) {

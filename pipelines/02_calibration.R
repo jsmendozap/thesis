@@ -11,13 +11,8 @@ list(
     tar_target(
         name = calibration,
         command = {
-            files <- dir_ls(
-                calibration_dir,
-                type = "file",
-                glob = "*.parquet"
-            )
             out_dir <- str_replace(calibration_dir, "data", "output")
-            identify_sources(files, out_dir, land_ocean_mask)
+            identify_sources(calibration_dir, out_dir, land_ocean_mask)
         },
         pattern = map(calibration_dir),
         format = "file"
@@ -25,6 +20,11 @@ list(
     tar_target(
         name = duration,
         command = trajectory_duration(calibration),
+        pattern = map(calibration)
+    ),
+    tar_target(
+        name = n_particles,
+        command = grid_convergence(sphu_profile, calibration, config_file),
         pattern = map(calibration)
     ),
     tar_target(

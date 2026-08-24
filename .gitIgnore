@@ -6,3 +6,4 @@ data/*
 output/
 hysplit/.env
 commands
+temp/

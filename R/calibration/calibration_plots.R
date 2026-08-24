@@ -7,7 +7,6 @@ calibration_plots <- function(duration, points) {
     mutate(
       duration = durations / 24,
       unknown_origin = unknown_origin * 100,
-      month = factor(month, levels = c("march", "may", "july")),
       year = as.factor(year)
     ) %>%
     ggplot(aes(x = duration, y = unknown_origin, group = year, col = year)) +
@@ -33,9 +32,9 @@ calibration_plots <- function(duration, points) {
       ~month,
       labeller = labeller(
         month = c(
-          "july" = "July (Dry season)",
-          "march" = "March (Wet season)",
-          "may" = "May (Transition)"
+          "08" = "August (Dry season)",
+          "03" = "March (Wet season)",
+          "05" = "May (Transition)"
         )
       )
     ) +

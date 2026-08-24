@@ -103,27 +103,52 @@ cd "$PROJECT_DIR"
 mv "$HYSPLIT_CLONE/exec/traj_${TIME}.txt" "$TEMP_RAW_TXT"
 
 if [ -s "$TEMP_RAW_TXT" ]; then
-  printf "[INFO] Converting traj_${TIME}.txt to Parquet...\n"
-  TIME_PREFIX=$(echo "$TIME" | tr -d '_')
+  year=$(echo "$TIME" | cut -d'_' -f1)
+  month=$(echo "$TIME" | cut -d'_' -f2)
 
-  awk '/PRESSURE/{flag=1; next} flag {$1=$1; print $1, $9, $10, $11, $12, $14, $15, $17}' "$TEMP_RAW_TXT" | \
-  "$DUCKDB_BIN" -c "COPY (
-  SELECT '${TIME_PREFIX}' || LPAD(CAST(traj_id AS VARCHAR), 4, '0') AS id,
-    age, lat, long, height, rain, blh, sphu
-  FROM read_csv('/dev/stdin', auto_detect=False, header=False, delim=' ', columns={
-    'traj_id':'INTEGER', 'age':'DOUBLE', 'lat':'DOUBLE', 'long':'DOUBLE', 'height':'DOUBLE',
-    'rain':'DOUBLE', 'blh':'DOUBLE', 'sphu':'DOUBLE'
-  })
-  ) TO '$PARQUET_OUT' (FORMAT PARQUET, COMPRESSION 'ZSTD');"
+  mkdir -p "$OUTPUT_DIR/year=$year/month=$month"
+  "$DUCKDB_BIN" << EOF
+SET threads TO 1; 
 
-  if [ -f "$PARQUET_OUT" ]; then
-    mv "$TEMP_RAW_TXT" "$RAW_DIR"
-    cd "$OUTPUT_DIR" && rm -rf "$TEMP_OUT_DIR"
-    printf "[OK] Simulation ${TIME} complete and converted to Parquet.\n"
+COPY (
+  WITH raw_data AS (
+    SELECT 
+      row_number() OVER () AS line_id,
+      regexp_replace(trim(column0), '\s+', ' ', 'g') AS raw_line
+    FROM read_csv(
+      '$TEMP_RAW_TXT',
+      header = FALSE,
+      all_varchar = TRUE,
+      delim = chr(0),
+      quote = '',
+      escape = ''
+    )
+    WHERE trim(column0) != ''
+  )
+  SELECT 
+    line_id,
+    raw_line,
+    CASE 
+      WHEN line_id > (SELECT MAX(line_id) FROM raw_data WHERE raw_line LIKE '%PRESSURE%') 
+        THEN replace('$TIME', '_', '') || lpad(split_part(raw_line, ' ', 1), 4, '0')
+      
+      WHEN length(string_split(raw_line, ' ')) = 7 
+        THEN replace('$TIME', '_', '') || lpad(CAST(row_number() OVER (PARTITION BY length(string_split(raw_line, ' ')) = 7 ORDER BY line_id) AS VARCHAR), 4, '0')
+      
+      ELSE NULL 
+    END AS id
+  FROM raw_data
+) TO '$OUTPUT_DIR/year=$year/month=$month/traj_${TIME}.parquet' 
+(FORMAT PARQUET, COMPRESSION ZSTD, OVERWRITE_OR_IGNORE 1);
+EOF
+
+  if [ $? -eq 0 ]; then
+    rm -r "$TEMP_OUT_DIR"
   else
-    printf "[ERROR] Parquet file could not be generated from txt file: ${TIME}.\n"
+    printf "[ERROR] DuckDB conversion failed for ${TIME}.\n"
     exit 1
   fi
+
 else
   printf "[ERROR] No output file generated for ${TIME}. Please check the log.\n"
   exit 1

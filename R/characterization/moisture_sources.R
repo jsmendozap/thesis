@@ -12,11 +12,24 @@ identify_sources <- function(trajectories, path, mask) {
     add = TRUE
   )
 
-  duckdb_register(con, "mask_grid", mask)
+  mask_grid <- open_dataset(mask) %>% to_duckdb(con = con)
   dbExecute(con, sprintf("SET temp_directory='%s';", worker_tmp))
 
   open_dataset(trajectories) %>%
     to_duckdb(con = con) %>%
+    mutate(parts = string_split(raw_line, " ")) %>%
+    filter(length(parts) == 17) %>%
+    transmute(
+      id = id,
+      age = parts[[9]],
+      lat = parts[[10L]],
+      long = parts[[11]],
+      height = parts[[12]],
+      rain = parts[[14]],
+      blh = parts[[15]],
+      sphu = parts[[17]]
+    ) %>%
+    mutate(across(2:8, ~ as.numeric(.x))) %>%
     # Grouping by trajectory
     group_by(id) %>%
     # --- Section 1: Moisture sources identification ---
@@ -75,7 +88,10 @@ identify_sources <- function(trajectories, path, mask) {
       # The total percentage of moisture decrease along the whole trajectory is given by the cummulative
       # product of all the individuals fractions of remaining humidity: f = ∏αi = exp(∑log(αi))
       # Represents the exact percentage of water that survived from the evaporation moment until t=0.
-      survival_factor = ifelse(alpha <= 0, 1e-2, alpha) %>% log() %>% cumsum() %>% exp(),
+      survival_factor = ifelse(alpha <= 0, 1e-2, alpha) %>%
+        log() %>%
+        cumsum() %>%
+        exp(),
       # Absolute water mass from each source that reached the target area
       contribution = ifelse(!is.na(source), delta * survival_factor, 0),
       # Fractional contribution of every source is obtained by dividing by sphu at t = 0
@@ -84,17 +100,23 @@ identify_sources <- function(trajectories, path, mask) {
     # Drop empty parcels to avoid division by zero
     filter(sphu_t0 > 1e-6) %>%
     # Relative contribution of each source (0 to 1)
-    mutate(fractional_contribution = ifelse(contribution != 0, contribution / sphu_t0, 0)) %>%
+    mutate(
+      fractional_contribution = ifelse(
+        contribution != 0,
+        contribution / sphu_t0,
+        0
+      )
+    ) %>%
     ungroup() %>%
     filter(!is.na(source)) %>%
     # --- Section 3: Spatial Indexing and Mask Join ---
 
     # Convert continuous coordinates into discrete 0.25-degree grid cells.
-    # Multiplying by 4 (1 / 0.25 = 4) and rounding down (floor) assigns every point
+    # Multiplying by 4 (1 / 0.01 = 100) and rounding down (floor) assigns every point
     # to a unique integer ID representing its grid box.
     mutate(
-      lon_idx = as.integer(floor(long * 4)),
-      lat_idx = as.integer(floor(lat * 4))
+      lon_idx = as.integer(floor(long * 100)),
+      lat_idx = as.integer(floor(lat * 100))
     ) %>%
     select(
       id,
@@ -109,15 +131,32 @@ identify_sources <- function(trajectories, path, mask) {
     ) %>%
     compute() %>%
     # Match the points to the mask using the integer IDs instead of spatial distances.
-    inner_join(
-      tbl(con, "mask_grid"),
+    left_join(
+      mask_grid,
       by = c("lon_idx", "lat_idx")
     ) %>%
     mutate(
+      is_ocean = coalesce(is_ocean, TRUE),
+      country_or_ocean = coalesce(country_or_ocean, "Unclassifed Ocean"),
+      source_domain = coalesce(source_domain, "Unclassifed Ocean"),
+      is_aoi = coalesce(is_aoi, FALSE),
       geometry = ST_Point(long, lat),
       id = as.character(id)
     ) %>%
-    select(id, age, source, contribution, fractional_contribution, location, geometry) %>%
+    select(
+      id,
+      age,
+      source,
+      contribution,
+      fractional_contribution,
+      country_or_ocean,
+      ecoregion,
+      is_aoi,
+      is_ocean,
+      hydrological_zone,
+      source_domain,
+      geometry
+    ) %>%
     arrange(id) %>%
     to_arrow() %>%
     write_dataset(path = path, format = "parquet")
