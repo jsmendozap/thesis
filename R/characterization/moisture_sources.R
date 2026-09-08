@@ -1,8 +1,11 @@
 pacman::p_load(DBI, duckdb, duckspatial, dplyr, dbplyr, arrow, here)
 
 identify_sources <- function(trajectories, path, mask) {
-  con <- ddbs_create_conn(threads = 4, memory_limit_gb = 5)
+  con <- ddbs_create_conn(threads = 12, memory_limit_gb = 80)
   worker_tmp <- tempfile(pattern = "duckdb_", tmpdir = here("temp"))
+  
+  dbExecute(con, sprintf("SET temp_directory='%s';", worker_tmp))
+  dbExecute(con, "SET preserve_insertion_order = false;")
 
   on.exit(
     {
@@ -13,9 +16,9 @@ identify_sources <- function(trajectories, path, mask) {
   )
 
   mask_grid <- open_dataset(mask) %>% to_duckdb(con = con)
-  dbExecute(con, sprintf("SET temp_directory='%s';", worker_tmp))
 
-  open_dataset(trajectories) %>%
+  
+  dataset <- open_dataset(trajectories) %>%
     to_duckdb(con = con) %>%
     mutate(parts = string_split(raw_line, " ")) %>%
     filter(length(parts) == 17) %>%
@@ -23,22 +26,32 @@ identify_sources <- function(trajectories, path, mask) {
       id = id,
       age = parts[[9]],
       lat = parts[[10L]],
-      long = parts[[11]],
+      lon = parts[[11]],
       height = parts[[12]],
       rain = parts[[14]],
       blh = parts[[15]],
       sphu = parts[[17]]
     ) %>%
-    mutate(across(2:8, ~ as.numeric(.x))) %>%
+    mutate(across(2:8, ~ as.numeric(.x)))
+  
+  valid_trajectories <- dataset %>%  
+    filter(age == 0, rain != 0) %>%
+      mutate(
+        dest_lon_idx = as.integer(floor(lon * 100)),
+        dest_lat_idx = as.integer(floor(lat * 100))
+      ) %>%
+      inner_join(
+        mask_grid %>% select(dest_hydrological_zone = hydrological_zone, lon_idx, lat_idx),
+        by = c("dest_lon_idx" = "lon_idx", "dest_lat_idx" = "lat_idx")
+      ) %>%
+      select(id, dest_hydrological_zone, sphu_t0 = sphu)
+  
+  dataset%>%
+    # --- Section 1: Moisture sources identification ---
+    # Step 1: Removing trajectories without precipitation at t = 0
+    inner_join(valid_trajectories, by = "id") %>%
     # Grouping by trajectory
     group_by(id) %>%
-    # --- Section 1: Moisture sources identification ---
-
-    # Step 1: Removing trajectories without precipitation at t = 0
-    mutate(
-      pp_at_age_0 = ifelse(age == 0 & rain != 0, 1, 0) %>% max(na.rm = T)
-    ) %>%
-    filter(pp_at_age_0 == 1) %>%
     # Sort chronologically (from past to present) to calculate step-by-step humidity changes
     window_order(age) %>%
     mutate(
@@ -68,8 +81,8 @@ identify_sources <- function(trajectories, path, mask) {
       ),
       # Step 5: When the conditions are fullfilled, a moisture source is identified and its position
       # is recorded as the mean point between [t, t - 1]
-      lat = ifelse(!is.na(source), (lat + lag(lat)) / 2, NA),
-      long = ifelse(!is.na(source), (long + lag(long)) / 2, NA),
+      source_lat = ifelse(!is.na(source), (lat + lag(lat)) / 2, NA),
+      source_lon = ifelse(!is.na(source), (lon + lag(lon)) / 2, NA),
 
       # --- Section 2: Moisture source attribution ---
 
@@ -93,13 +106,12 @@ identify_sources <- function(trajectories, path, mask) {
         cumsum() %>%
         exp(),
       # Absolute water mass from each source that reached the target area
-      contribution = ifelse(!is.na(source), delta * survival_factor, 0),
-      # Fractional contribution of every source is obtained by dividing by sphu at t = 0
-      sphu_t0 = ifelse(age == 0, sphu, 0) %>% max(na.rm = T)
+      contribution = ifelse(!is.na(source), delta * survival_factor, 0)
     ) %>%
     # Drop empty parcels to avoid division by zero
     filter(sphu_t0 > 1e-6) %>%
     # Relative contribution of each source (0 to 1)
+    # Fractional contribution of every source is obtained by dividing by sphu at t = 0
     mutate(
       fractional_contribution = ifelse(
         contribution != 0,
@@ -111,53 +123,54 @@ identify_sources <- function(trajectories, path, mask) {
     filter(!is.na(source)) %>%
     # --- Section 3: Spatial Indexing and Mask Join ---
 
-    # Convert continuous coordinates into discrete 0.25-degree grid cells.
+    # Convert continuous coordinates into discrete 0.01-degree grid cells.
     # Multiplying by 4 (1 / 0.01 = 100) and rounding down (floor) assigns every point
     # to a unique integer ID representing its grid box.
     mutate(
-      lon_idx = as.integer(floor(long * 100)),
-      lat_idx = as.integer(floor(lat * 100))
+      source_lon_idx = as.integer(floor(source_lon * 100)),
+      source_lat_idx = as.integer(floor(source_lat * 100))
     ) %>%
     select(
       id,
       age,
       source,
-      contribution,
+      contribution, 
       fractional_contribution,
-      long,
-      lat,
-      lon_idx,
-      lat_idx
+      dest_hydrological_zone,
+      source_lon,
+      source_lat,
+      source_lat_idx,
+      source_lon_idx
     ) %>%
-    compute() %>%
     # Match the points to the mask using the integer IDs instead of spatial distances.
+    # Source humidity points
     left_join(
       mask_grid,
-      by = c("lon_idx", "lat_idx")
+      by = c("source_lon_idx" = "lon_idx", "source_lat_idx" = "lat_idx")
     ) %>%
     mutate(
       is_ocean = coalesce(is_ocean, TRUE),
-      country_or_ocean = coalesce(country_or_ocean, "Unclassifed Ocean"),
+      country_or_ocean = coalesce(country_or_ocean, "Unclassified Ocean"),
       source_domain = coalesce(source_domain, "Unclassifed Ocean"),
       is_aoi = coalesce(is_aoi, FALSE),
-      geometry = ST_Point(long, lat),
+      geometry = ST_Point(source_lon, source_lat),
       id = as.character(id)
     ) %>%
     select(
       id,
       age,
       source,
-      contribution,
+      contribution, 
       fractional_contribution,
       country_or_ocean,
       ecoregion,
       is_aoi,
       is_ocean,
-      hydrological_zone,
+      source_hydrological_zone = hydrological_zone,
+      dest_hydrological_zone,
       source_domain,
       geometry
     ) %>%
-    arrange(id) %>%
     to_arrow() %>%
     write_dataset(path = path, format = "parquet")
 

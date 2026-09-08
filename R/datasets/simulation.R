@@ -38,10 +38,6 @@ setup <- function(
     st_transform(3857) %>%
     st_make_grid(cellsize = cellsize, what = "centers") %>%
     st_as_sf() %>%
-    mutate(
-      x_idx = st_coordinates(.)[, 1] %>% round %>% dense_rank,
-      y_idx = st_coordinates(.)[, 2] %>% round %>% dense_rank
-    ) %>%
     st_transform(4326) %>%
     {
       .[aoi, ]

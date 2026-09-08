@@ -1,7 +1,21 @@
 pacman::p_load(targets, tarchetypes, crew, here, jsonlite, tidyverse, fs)
 
 tar_option_set(
-  controller = crew_controller_local(workers = 2)
+  controller = crew_controller_group(
+    crew_controller_local(
+      name = "heavy",
+      workers = 1,
+      seconds_idle = 60,       
+      tasks_max = 1
+    ),
+    crew_controller_local(
+      name = "light",
+      workers = 2
+    )
+  ),
+  storage = "worker", 
+  retrieval = "worker",
+  memory = "transient"
 )
 
 for (dir in dir_ls("R", type = "directory")) {

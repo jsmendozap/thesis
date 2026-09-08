@@ -8,11 +8,6 @@ list(
         command = profile(aoi = aoi)
     ),
     tar_target(
-        name = moisture_profile_plot,
-        command = moisture_profile(sphu_profile),
-        format = "file"
-    ),
-    tar_target(
         name = config_file,
         command = setup(
             aoi = aoi,
@@ -29,11 +24,21 @@ list(
             vertical_method = 0,
             path = here("hysplit", "config.json")
         ),
-        format = "file"
+        format = "file",
+        cue = tar_cue("never")
     ),
     tar_target(
         name = land_ocean_mask,
         command = get_mask(config_file, aoi, here("data", "mask_grid.parquet")),
+        format = "file"
+    ), 
+    tar_target(
+        name = monthly_precipitation,
+        command = {
+          data <- here("data", "precipitation_mm.nc")
+          out <- here("data", "monthly_pp.parquet")
+          get_monthly_pp(aoi, data, out)
+        },
         format = "file"
     )
 )

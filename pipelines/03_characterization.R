@@ -8,6 +8,11 @@ list(
         ),
         format = "file"
     ),
+    tar_target(
+      name = moisture_profile_plot,
+      command = moisture_profile(sphu_profile, parameters),
+      format = "file"
+    ),
     tar_files(
         name = trajectories,
         command = dir(here("data", "trajectories"), full.names = TRUE)

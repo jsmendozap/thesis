@@ -1,7 +1,6 @@
 pacman::p_load(tidyverse, here)
 
-calibration_plots <- function(duration, points) {
-  params <- simulation_parameters(duration, points)
+calibration_plots <- function(duration, n_particles, params) {
 
   p <- duration %>%
     mutate(
@@ -44,67 +43,88 @@ calibration_plots <- function(duration, points) {
       strip.background = element_rect(fill = "grey90", color = "black")
     )
 
-  ggsave("trajectory_duration.png", width = 9, height = 5, path = here("plots"))
+  ggsave("trajectory_duration.png", width = 10, height = 5, path = here("plots"))
 
   ## ------------------------------------------------------------------------------------
 
-  p1 <- ggplot(params$points_smooth, aes(x = size, y = max_delta)) +
+  p1 <- params$regional_change %>%
+    ggplot(aes(x = cellsize_km, y = regional_step_change, color = as.factor(n_levels))) +
     geom_line() +
-    geom_point(size = 0.8) +
-    geom_hline(yintercept = 0.25, linetype = 2, color = 'gray') +
-    scale_x_continuous(breaks = seq(0, 3000, 300)) +
-    scale_y_continuous(breaks = seq(0, 4, 0.5)) +
-    labs(y = "Marginal CV reduction", x = "Number of trajectories") +
-    theme_bw()
-
-  ggsave(
-    "marginal_cv_reduction.png",
-    width = 7,
-    height = 4,
-    path = here("plots")
-  )
-
-  p2 <- ggplot(points, aes(x = size, y = cv, color = year)) +
-    geom_line(linewidth = 1) +
-    geom_vline(
-      xintercept = params$max_trajectories,
-      linetype = "dashed",
-      color = "black",
-      alpha = 0.6
-    ) +
-    facet_wrap(
-      ~month,
-      labeller = labeller(
-        month = c(
-          "july" = "July (Dry season)",
-          "march" = "March (Wet season)",
-          "may" = "May (Transition)"
-        )
-      )
-    ) +
-    scale_x_continuous(breaks = seq(0, 3000, 300)) +
-    scale_y_continuous(breaks = seq(0, 24, 2)) +
-    scale_color_manual(
-      labels = c("2000 (La Niña)", "2014 (Neutral)", "2015 (El Niño)"),
-      values = c("#0072B2", "#E69F00", "#009E73")
-    ) +
+    geom_point() +
+    facet_grid(simulation_year ~ simulation_month,
+               labeller = labeller(
+                 simulation_month = c(
+                   "03" = "March (Wet season)",
+                   "05" = "May (Transition)",
+                   "08" = "August (Dry season)"
+                 )
+               )) +
+    scale_y_continuous(labels = scales::percent_format()) +
+    scale_x_reverse(breaks = seq(40, 400, 40)) +
     labs(
-      x = "Number of trajectories per launch",
-      y = "Coefficient of Variation (%)"
+      x = "Cell size (km)",
+      y = "Source attribution change relative to previous step",
+      color = "Vertical levels"
     ) +
     theme_bw() +
     theme(
       legend.position = "bottom",
-      strip.background = element_rect(fill = "grey90", color = "black")
+      strip.text = element_text(face = "bold")
     )
 
-  ggsave("trajectory_points.png", width = 12, height = 5, path = here("plots"))
+  ggsave(
+    "trj_stability.png",
+    width = 10,
+    height = 8,
+    path = here("plots")
+  )
+
+  # Evaluates spatial stability at the basin level.
+  # The core logic mirrors the regional temporal analysis, but it aggregates 
+  # and averages the attribution errors across all simulated months and years.
+  # This isolates the overall grid convergence behavior inherent to each specific basin.
+  p2 <- n_particles %>%
+    group_by(simulation_year, simulation_month, dest_hydrological_zone, cellsize_km, n_levels, source_domain) %>%
+    summarise(volume_km3 = sum(volume_km3, na.rm = TRUE), .groups = "drop") %>%
+    
+    group_by(simulation_year, simulation_month, dest_hydrological_zone, cellsize_km, n_levels) %>%
+    mutate(fraction = volume_km3 / sum(volume_km3, na.rm = TRUE)) %>%
+    
+    arrange(dest_hydrological_zone, simulation_year, simulation_month, n_levels, source_domain, desc(cellsize_km)) %>%
+    group_by(dest_hydrological_zone, simulation_year, simulation_month, n_levels, source_domain) %>%
+    mutate(step_diff = abs(fraction - lag(fraction))) %>%
+    filter(!is.na(step_diff)) %>%
+    
+    group_by(dest_hydrological_zone, simulation_year, simulation_month, cellsize_km, n_levels) %>%
+    summarise(basin_step_change = sum(step_diff)/2, .groups = "drop") %>%
+    
+    group_by(dest_hydrological_zone, cellsize_km, n_levels) %>%
+    summarise(mean_step_change = mean(basin_step_change, na.rm = TRUE), .groups = "drop") %>%
+    
+    ggplot(aes(x = cellsize_km, y = mean_step_change, color = as.factor(n_levels))) +
+    geom_line() + 
+    geom_point() +
+    facet_wrap(~dest_hydrological_zone, scales = "free_y") +
+    scale_y_continuous(labels = scales::percent_format()) +
+    scale_x_reverse(breaks = seq(40, 400, 40)) +
+    labs(
+      x = "Cell size (km)",
+      y = "Source attribution change relative to previous step",
+      color = "Vertical levels"
+    ) +
+    theme_bw() +
+    theme(
+      legend.position = "bottom",
+      strip.text = element_text(face = "bold")
+    )
+
+  ggsave("trj_stability_basins.png", width = 12, height = 10, path = here("plots"))
 
   return(
     c(
       here("plots", "trajectory_duration.png"),
-      here("plots", "trajectory_points.png"),
-      here("plots", "marginal_cv_reduction.png")
+      here("plots", "trj_stability.png"),
+      here("plots", "trj_stability_basins.png")
     )
   )
 }

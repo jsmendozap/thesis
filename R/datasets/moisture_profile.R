@@ -1,6 +1,6 @@
 pacman::p_load('tidyverse', 'here')
 
-moisture_profile <- function(profile) {
+moisture_profile <- function(profile, parameters) {
   profile %>%
     summarise(q = mean(q), .by = level) %>%
     arrange(desc(level)) %>%
@@ -21,25 +21,8 @@ moisture_profile <- function(profile) {
     summarise(flux = mean(flux), q = mean(q), .by = level)
 
   fn <- approxfun(x = data$level, y = data$flux, rule = 2)
-  sampling_points <- profile %>%
-    group_by(level) %>%
-    summarise(flux = mean(flux)) %>%
-    arrange(level) %>%
-    mutate(
-      flux_cum = cumsum(flux) / sum(flux),
-      level = as.character(level) %>% as.integer
-    ) %>%
-    {
-      approxfun(.$flux_cum, .$level)
-    } %>%
-    {
-      .(seq(0.05, 0.99, length.out = 30))
-    } %>%
-    round(-1) %>%
-    {
-      data.frame(level = .)
-    } %>%
-    mutate(x_coord = fn(level))
+  hpa <- height_levels(profile, parameters$max_trajectories$n_levels) %>% {1014 / exp(. / 8000)} %>% round
+  sampling_points <- data.frame(level = hpa, x_coord = fn(hpa))
 
   p <- data %>%
     ggplot(aes(y = level)) +

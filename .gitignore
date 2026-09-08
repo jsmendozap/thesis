@@ -7,3 +7,5 @@ output/
 hysplit/.env
 commands
 temp/
+.Rhistory
+.Rproj.user
