@@ -6,14 +6,6 @@ source "$(dirname "$0")/config.sh"
 readonly CURRENT_TS="$1"
 
 TIME="$(date -u -d "@$CURRENT_TS" +'%Y_%m_%d_%H')"
-PARQUET_OUT="$PARQUET_DIR/traj_${TIME}.parquet"
-RAW_TXT="$RAW_DIR/traj_${TIME}.txt"
-
-if [ -f "$RAW_TXT" ] || [ -f "$PARQUET_OUT" ]; then
-  printf "[SKIP] Output already exists for %s. Skipping.\n" "$TIME"
-  exit 0
-fi
-
 END_SEC=$(( CURRENT_TS + (DIRECTION * DURATION * 3600) ))
 
 if [[ $CURRENT_TS -lt $END_SEC ]]; then
@@ -57,6 +49,10 @@ for file in $REQUIRED_FILES; do
   MET_FILES+=("$file")
 done
 
+POINTS=$(jq -r '.control.points[] | "\(.lat) \(.lon) \(.height)"' "$CFG")
+NUM_POINTS=$(echo "$POINTS" | wc -l)
+VERT_METHOD=$(jq -r '.control.vertical_method' "$CFG")
+TOP_MODEL=$(jq -r '.control.top_model' "$CFG")
 NUM_MET=${#MET_FILES[@]}
 
 printf "traj_${TIME}\n" > "$STATUS_DIR/hysplit_sim.status" 2>/dev/null || true
@@ -130,10 +126,10 @@ COPY (
     raw_line,
     CASE 
       WHEN line_id > (SELECT MAX(line_id) FROM raw_data WHERE raw_line LIKE '%PRESSURE%') 
-        THEN replace('$TIME', '_', '') || lpad(split_part(raw_line, ' ', 1), 4, '0')
+        THEN replace('$TIME', '_', '') || lpad(split_part(raw_line, ' ', 1), 5, '0')
       
       WHEN length(string_split(raw_line, ' ')) = 7 
-        THEN replace('$TIME', '_', '') || lpad(CAST(row_number() OVER (PARTITION BY length(string_split(raw_line, ' ')) = 7 ORDER BY line_id) AS VARCHAR), 4, '0')
+        THEN replace('$TIME', '_', '') || lpad(CAST(row_number() OVER (PARTITION BY length(string_split(raw_line, ' ')) = 7 ORDER BY line_id) AS VARCHAR), 5, '0')
       
       ELSE NULL 
     END AS id

@@ -6,8 +6,8 @@ setup <- function(
   end_date,
   duration,
   interval_traj,
-  available_levels,
-  vertical_levels,
+  pressure_levels,
+  height_levels,
   cellsize,
   profile,
   bbox,
@@ -15,17 +15,20 @@ setup <- function(
   vertical_method,
   path
 ) {
-  HEIGHTS <- height_levels(profile, vertical_levels)
 
   PRESSURE_LEVELS <- filter(
     profile,
-    level %in% available_levels
+    level %in% pressure_levels
   ) %>%
     pull(level) %>%
     unique() %>%
     as.character() %>%
     as.numeric()
 
+  HEIGHTS <- keep(PRESSURE_LEVELS, \(x) x %in% height_levels) %>% 
+    { 8000 * log(1014 / .) } %>%
+    round(digits = -1)
+  
   OUTPUT_VARS <- list("tm_sphu", "tm_relh", "tm_mixd", "tm_rain")
   PRES_VARS <- "specific_humidity"
   SFC_VARS <- c(
@@ -39,9 +42,7 @@ setup <- function(
     st_make_grid(cellsize = cellsize, what = "centers") %>%
     st_as_sf() %>%
     st_transform(4326) %>%
-    {
-      .[aoi, ]
-    } %>%
+    { .[aoi, ] } %>%
     mutate(
       lon = st_coordinates(.)[, 1],
       lat = st_coordinates(.)[, 2]

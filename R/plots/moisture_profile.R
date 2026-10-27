@@ -1,6 +1,6 @@
-pacman::p_load('tidyverse', 'here')
+pacman::p_load('tidyverse', 'here', 'jsonlite')
 
-moisture_profile <- function(profile, parameters) {
+moisture_profile <- function(profile) {
   profile %>%
     summarise(q = mean(q), .by = level) %>%
     arrange(desc(level)) %>%
@@ -20,16 +20,11 @@ moisture_profile <- function(profile, parameters) {
     ) %>%
     summarise(flux = mean(flux), q = mean(q), .by = level)
 
-  fn <- approxfun(x = data$level, y = data$flux, rule = 2)
-  hpa <- height_levels(profile, parameters$max_trajectories$n_levels) %>% {1014 / exp(. / 8000)} %>% round
-  sampling_points <- data.frame(level = hpa, x_coord = fn(hpa))
-
   p <- data %>%
     ggplot(aes(y = level)) +
     geom_path(aes(x = flux), linewidth = 0.8, col = 'darkgreen') +
-    geom_point(
-      data = sampling_points,
-      aes(x = x_coord, y = level),
+    geom_point(data = filter(data, level %in% 350:1000),
+      aes(x = flux),
       shape = 21,
       fill = "darkgray",
       size = 1.5

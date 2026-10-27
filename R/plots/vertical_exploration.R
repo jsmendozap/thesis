@@ -1,6 +1,9 @@
 pacman::p_load(
-  'stars',
+  'terra',
   'tidyverse',
+  'tidyterra',
+  'sf',
+  'exactextractr',
   'here',
   'feasts',
   'tsibble',
@@ -25,12 +28,21 @@ smooth_data <- function(month, mean, sd, varname) {
 }
 
 monthly_summary <- function(profile, single_levels, aoi) {
-  pp <- read_stars(single_levels) %>%
-    st_set_crs(4326) %>%
-    .[aoi] %>%
-    st_apply("time", mean, na.rm = TRUE) %>%
-    as.data.frame() %>%
+  pp <- rast(single_levels) %>% 
+    select(starts_with("tp")) %>% 
+    crop(aoi) %>%
+    exact_extract(
+      st_union(aoi), 
+      fun = "mean"
+    ) %>%
+    pivot_longer(
+      cols = starts_with("mean"),
+      names_to = "time",
+      names_prefix = "mean.Y", 
+      values_to = "mean"
+    ) %>%
     mutate(
+      time = seq(ymd("1995-01-01"), ymd("2025-12-31"), by = "1 month"),
       month = month(time, label = T),
       days_in_month = days_in_month(time),
       pp = mean * 1000 * days_in_month

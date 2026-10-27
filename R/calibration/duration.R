@@ -2,12 +2,13 @@ pacman::p_load(arrow, tidyverse, duckdb, duckspatial, DBI, here)
 
 trajectory_duration <- function(dataset) {
     worker_tmp <- tempfile(pattern = "duckdb_", tmpdir = here("temp"))
-    con <- ddbs_create_conn(threads = 6, memory_limit_gb = 25)
+    con <- ddbs_create_conn(threads = 6, memory_limit_gb = 80)
 
     on.exit(
         {
             dbDisconnect(con, shutdown = TRUE)
             unlink(worker_tmp, recursive = TRUE)
+            gc(full = T)
         },
         add = TRUE
     )

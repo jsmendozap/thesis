@@ -22,13 +22,26 @@ load_aoi <- function() {
     st_make_valid()
 }
 
-get_mask <- function(config, aoi, path) {
+load_ecoregions <- function(config){
   bbox <- read_json(config, simplifyVector = T)$area %>%
-    {
-      st_bbox(c(xmin = .[2], xmax = .[4], ymax = .[1], ymin = .[3]))
-    }
-
+    {st_bbox(c(xmin = .[2], xmax = .[4], ymax = .[1], ymin = .[3]))}
+  
   wkt <- st_as_sfc(bbox) %>% st_as_text()
+  
+  url <- "https://storage.googleapis.com/teow2016/Ecoregions2017.zip"
+  ecoregions <- st_read(
+    paste0("/vsizip/vsicurl/", url),
+    wkt_filter = wkt,
+    quiet = TRUE
+  ) %>%
+    st_make_valid() %>%
+    st_crop(bbox)
+}
+
+get_mask <- function(config, aoi, ecoreg, path) {
+  bbox <- read_json(config, simplifyVector = T)$area %>%
+    {st_bbox(c(xmin = .[2], xmax = .[4], ymax = .[1], ymin = .[3]))}
+
   template <- rast(ext(bbox), res = 0.01, crs = "EPSG:4326")
 
   countries <- ne_countries(scale = 10) %>%
@@ -38,14 +51,7 @@ get_mask <- function(config, aoi, path) {
 
   names(countries) <- "country"
 
-  url <- "https://storage.googleapis.com/teow2016/Ecoregions2017.zip"
-  ecoregions <- st_read(
-    paste0("/vsizip/vsicurl/", url),
-    wkt_filter = wkt,
-    quiet = TRUE
-  ) %>%
-    st_make_valid() %>%
-    st_crop(bbox) %>%
+   ecoregions <- ecoreg %>%
     rasterize(template, field = "ECO_NAME")
 
   names(ecoregions) <- "ecoregion"
@@ -70,8 +76,6 @@ get_mask <- function(config, aoi, path) {
   names(amazonian_col) <- "is_aoi"
 
   basins <- aoi %>%
-    mutate(area = st_area(.) %>% units::set_units("km^2")) %>%
-    filter(area > units::as_units("1000 km^2")) %>%
     select(nom_zh, geometry) %>%
     rasterize(template, field = "nom_zh")
 
@@ -92,7 +96,7 @@ get_mask <- function(config, aoi, path) {
       source_domain = case_when(
         is_ocean ~ country_or_ocean,
         !is.na(ecoregion) ~ paste(country_or_ocean, ecoregion, sep = " - "),
-        TRUE ~ paste0(country_or_ocean, "Unclassified Ecoregion", sep = " - ")
+        TRUE ~ paste(country_or_ocean, "Unclassified Ecoregion", sep = " - ")
       ),
 
       is_aoi = !is.na(is_aoi)

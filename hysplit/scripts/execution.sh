@@ -54,7 +54,10 @@ fi
 MAX_JOBS=8
 for (( current=SIM_LOWER; current<=SIM_UPPER; current+=(TR_INTERVAL * 3600) )); do
   TIME="$(date -u -d "@$current" +'%Y_%m_%d_%H')"
-  if [ ! -f "$PARQUET_DIR/traj_${TIME}.parquet" ]; then
+  year="$(date -u -d "@$current" +'%Y')"
+  month="$(date -u -d "@$current" +'%m')"
+  
+  if [ ! -f "$OUTPUT_DIR/year=$year/month=$month/traj_${TIME}.parquet" ]; then
     echo "$current"
   fi
 done | xargs -I {} -P "$MAX_JOBS" bash -c 'exec "$0" "$@" 201>&-' "$SCRIPTS_DIR/simulation.sh" "{}"

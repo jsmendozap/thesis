@@ -27,15 +27,13 @@ DATA_DIR="$PROJECT_DIR/data"
 TARBALLS_DIR="$PROJECT_DIR/tarballs"
 RUN_DIR="$PROJECT_DIR/run"
 LOG_DIR="$RUN_DIR/log"
-RAW_DIR="$OUTPUT_DIR/raw"
-PARQUET_DIR="$OUTPUT_DIR/parquet"
 MET_DIR="$DATA_DIR/ARL"
 GRIB_DIR="$DATA_DIR/GRIB"
 SCRIPTS_DIR="$PROJECT_DIR/scripts"
 STATUS_DIR="$PROJECT_DIR/status"
 
 # --- Create project structure ------------------------------------------------
-mkdir -p "$DEPS_DIR" "$BIN_DIR" "$OUTPUT_DIR" "$DATA_DIR" "$TARBALLS_DIR" "$RUN_DIR" "$LOG_DIR" "$RAW_DIR" "$PARQUET_DIR" "$MET_DIR" "$GRIB_DIR" "$STATUS_DIR"
+mkdir -p "$DEPS_DIR" "$BIN_DIR" "$OUTPUT_DIR" "$DATA_DIR" "$TARBALLS_DIR" "$RUN_DIR" "$LOG_DIR" "$MET_DIR" "$GRIB_DIR" "$STATUS_DIR"
 
 # --- Functions ---------------------------------------------------------------
 

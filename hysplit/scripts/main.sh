@@ -56,9 +56,9 @@ send_update() {
     EXP_GRIBS=$(( EXP_ARLS * 2 ))
     EXP_SIMS=$TOTAL_SIMS
 
-    ACT_GRIBS=$(find "$GRIB_DIR" -maxdepth 1 -name "*.GRIB" 2>/dev/null | wc -l)
-    ACT_ARLS=$(find "$MET_DIR" -maxdepth 1 -name "*.ARL" 2>/dev/null | wc -l)
-    ACT_SIMS=$(find "$PARQUET_DIR" -maxdepth 1 -name "*.parquet" 2>/dev/null | wc -l)
+    ACT_GRIBS=$(find "$GRIB_DIR" -maxdepth 1 -name "*.GRIB" 2>/dev/null | wc -l || echo 0)
+    ACT_ARLS=$(find "$MET_DIR" -maxdepth 1 -name "*.ARL" 2>/dev/null | wc -l || echo 0)
+    ACT_SIMS=$(find "$OUTPUT_DIR" -name "*.parquet" 2>/dev/null | wc -l || echo 0)
 
     P_GRIB=$(( EXP_GRIBS > 0 ? (ACT_GRIBS * 100) / EXP_GRIBS : 0 ))
     P_ARL=$(( EXP_ARLS > 0 ? (ACT_ARLS * 100) / EXP_ARLS : 0 ))
@@ -73,7 +73,7 @@ send_update() {
 send_update
 
 while true; do
-    N_PARQUETS=$(find "$PARQUET_DIR" -maxdepth 1 -name "*.parquet" 2>/dev/null | wc -l)
+    N_PARQUETS=$(find "$OUTPUT_DIR" -name "*.parquet" 2>/dev/null | wc -l)
 
     if (( N_PARQUETS >= TOTAL_SIMS )); then
         notify "[OK] Pipeline ended. %d trajectories generated.\n" "$N_PARQUETS"

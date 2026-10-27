@@ -11,6 +11,10 @@ tar_option_set(
     crew_controller_local(
       name = "light",
       workers = 2
+    ),
+    crew_controller_local(
+      name = "ultralight",
+      workers = 5
     )
   ),
   storage = "worker", 
@@ -25,5 +29,6 @@ for (dir in dir_ls("R", type = "directory")) {
 list(
   source(here("pipelines", "01_datasets.R")),
   source(here("pipelines", "02_calibration.R")),
-  source(here("pipelines", "03_characterization.R"))
+  source(here("pipelines", "03_characterization.R")),
+  source(here("pipelines", "00_plots.R"))
 )
