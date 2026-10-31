@@ -15,11 +15,17 @@ pacman::p_load(
 )
 
 load_aoi <- function() {
+  # Napo is excluded due to its minimal area and the absence of trajectory 
+  # inside its boundaries
+  
   st_read("https://www.datos.gov.co/resource/5kjg-nuda.geojson") %>%
     filter(nom_ah == "Amazonas") %>%
     group_by(nom_zh) %>%
     summarise() %>%
-    st_make_valid()
+    st_make_valid() %>% 
+    mutate(area = st_area(.)) %>%
+    filter(area > set_units(500e6, "m2")) %>%
+    select(hydrological_zone = nom_zh, area)
 }
 
 load_ecoregions <- function(config){
@@ -35,7 +41,9 @@ load_ecoregions <- function(config){
     quiet = TRUE
   ) %>%
     st_make_valid() %>%
-    st_crop(bbox)
+    st_crop(bbox) %>%
+    select(ecoregion = ECO_NAME) %>%
+    mutate(area = st_area(.))
 }
 
 get_mask <- function(config, aoi, ecoreg, path) {
@@ -52,7 +60,7 @@ get_mask <- function(config, aoi, ecoreg, path) {
   names(countries) <- "country"
 
    ecoregions <- ecoreg %>%
-    rasterize(template, field = "ECO_NAME")
+    rasterize(template, field = "ecoregion")
 
   names(ecoregions) <- "ecoregion"
 
@@ -76,8 +84,8 @@ get_mask <- function(config, aoi, ecoreg, path) {
   names(amazonian_col) <- "is_aoi"
 
   basins <- aoi %>%
-    select(nom_zh, geometry) %>%
-    rasterize(template, field = "nom_zh")
+    select(hydrological_zone, geometry) %>%
+    rasterize(template, field = "hydrological_zone")
 
   names(basins) <- "hydrological_zone"
 
@@ -93,12 +101,6 @@ get_mask <- function(config, aoi, ecoreg, path) {
         TRUE ~ country
       ),
 
-      source_domain = case_when(
-        is_ocean ~ country_or_ocean,
-        !is.na(ecoregion) ~ paste(country_or_ocean, ecoregion, sep = " - "),
-        TRUE ~ paste(country_or_ocean, "Unclassified Ecoregion", sep = " - ")
-      ),
-
       is_aoi = !is.na(is_aoi)
     ) %>%
     select(
@@ -108,8 +110,7 @@ get_mask <- function(config, aoi, ecoreg, path) {
       ecoregion,
       is_aoi,
       is_ocean,
-      hydrological_zone,
-      source_domain
+      hydrological_zone
     ) %>%
     write_parquet(path, compression = "ZSTD")
 
@@ -117,43 +118,69 @@ get_mask <- function(config, aoi, ecoreg, path) {
 }
 
 
-get_monthly_pp <- function(aoi, file, path) {
+get_monthly_pp <- function(file, aoi, path) {
   template <- rast(ext(st_bbox(aoi)), res = 0.01, crs = "EPSG:4326")
   
   data <- rast(file)
   dates <- time(data) %>% format("%Y_%m")
   
   data_monthly <- tapp(data, index = dates, fun = sum, na.rm = TRUE) %>% 
-    resample(template, method = "near")
+    resample(template, method = "near") 
   names(data_monthly) <- unique(dates)
   crs(data_monthly) <- "EPSG:4326"
   
   data_monthly %>%
-    # Computing cellsize and performing conversion from mm to km3
-    # 1 mm = 1e-6 km. Volume = Area (km2) * Depth (km)
-    {cellSize(., unit = "km") * data_monthly * 1e-6}   %T>%
-    {names(.) <- names(data_monthly)} %>%
-    # Extracting volume by basin
-    exact_extract(st_as_sf(aoi), 'sum') %>%
-    mutate(hydrological_zone = aoi$nom_zh) %>%
+    exact_extract(st_as_sf(aoi), 'mean', append_cols = "hydrological_zone") %>%
     pivot_longer(
-      cols = starts_with("sum."),
+      cols = starts_with("mean."),
       names_to = "layer_name",
-      values_to = "precipitation_km3"
+      values_to = "precipitation"
     ) %>%
     mutate(
-      year = str_extract(layer_name, "[0-9]{4}"),
-      month = str_extract(layer_name, "(?<=[0-9]{4}_)[0-9]{2}")
+      year = str_extract(layer_name, "[0-9]{4}") %>% as.integer,
+      month = str_extract(layer_name, "(?<=[0-9]{4}_)[0-9]{2}") %>% as.integer,
+      precipitation = set_units(precipitation, "mm")
     ) %>%
-    select(year, month, hydrological_zone, precipitation_km3) %>%
+    select(year, month, hydrological_zone, precipitation) %>%
     write_parquet(path, compression = "ZSTD")
   
   return(path)
 }
 
 
-profile <- function(aoi) {
-  here("data", "pressure_levels.nc") %>%
+get_monthly_evap <- function(file, ecoregions, path){
+  # units: m/day (negative because the flux is upward)
+  evaporation <- rast(file) %>% select(starts_with("e_"))
+  days_month <- time(evaporation) %>% days_in_month() %>% as.numeric
+  
+  # Change of units to mm/month
+  evaporation <- evaporation * -1000 * days_month
+  dates <- tibble(date = time(evaporation)) %>%
+    mutate(id = row_number() %>% as.character())
+  
+  evaporation %>%
+    exact_extract(ecoregions, 'mean', append_cols = "ecoregion") %>%
+    pivot_longer(
+      cols = starts_with("mean"),
+      names_to = "id",
+      names_prefix = "mean.e_", 
+      values_to = "evap"
+    ) %>% 
+    left_join(dates) %>%
+    transmute( 
+      year = year(date),
+      month = month(date),
+      ecoregion,
+      evaporation = set_units(evap, "mm")
+    ) %>%
+    write_parquet(path, compression = "ZSTD")
+  
+  return(path)
+}
+
+
+profile <- function(aoi, file) {
+  file %>%
     read_stars() %>%
     st_set_crs(4326) %>%
     .[aoi] %>%

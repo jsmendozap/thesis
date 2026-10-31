@@ -39,14 +39,6 @@ attribution_plot <- function(attribution) {
       }
     ')
   
-  country_colors <- c(
-    "Brazil"    = "orange", # Verde intenso
-    "Colombia"  = "brown", # Naranja brillante
-    "Ecuador"   = "#33A02C", # Azul fuerte
-    "Peru"      = "#7F7F7F", # Rojo puro
-    "Venezuela" = "#6A3D9A"  # Morado oscuro
-  )
-  
   sankey_plot_path <- here("plots", "basin_sources.png")
   Sys.setenv(CHROMOTE_EXTRA_ARGS = "--no-sandbox --disable-gpu --disable-dev-shm-usage")
   

@@ -71,7 +71,8 @@ identify_sources <- function(trajectories, qc, rh_arrival, rh_loss, rain_arrival
       p_lower = coalesce((pressure + lag(pressure)) / 2, pmax(sp, pressure)),
       p_upper = coalesce((pressure + lead(pressure)) / 2, pressure),
       delta_p = (p_lower - p_upper) * 100,
-      mass_kg = 30e3 * 30e3 * delta_p / 9.8
+      parcel_mass_kg = 30e3 * 30e3 * delta_p / 9.8,
+      air_col_mass_kg = sum(parcel_mass_kg, na.rm = TRUE)
     ) %>% 
     filter(prev_rh > rh_arrival, dq_t0 < -qc, !!rain_arrival_cond) %>%
     ungroup() %>%
@@ -80,12 +81,12 @@ identify_sources <- function(trajectories, qc, rh_arrival, rh_loss, rain_arrival
       dest_lat_idx = as.integer(floor(lat * 100))
     ) %>%
     inner_join(
-      mask_grid %>% select(dest_hydrological_zone = hydrological_zone, lon_idx, lat_idx),
+      mask_grid %>% select(hydrological_zone, lon_idx, lat_idx),
       by = c("dest_lon_idx" = "lon_idx", "dest_lat_idx" = "lat_idx")
     ) %>%
     select(
-      id, dest_hydrological_zone, sphu_t0 = sphu, height_t0 = height,
-      lon_t0 = lon, lat_t0 = lat, dq_t0, mass_kg
+      id, hydrological_zone, sphu_t0 = sphu, height_t0 = height,
+      lon_t0 = lon, lat_t0 = lat, dq_t0, parcel_mass_kg, air_col_mass_kg
     )
   
   dataset%>%
@@ -120,7 +121,7 @@ identify_sources <- function(trajectories, qc, rh_arrival, rh_loss, rain_arrival
       # is recorded as the mean point between [t, t - 1]
       source_lat = ifelse(is_source, (lat + lag(lat)) / 2, NA),
       source_lon = ifelse(is_source, (lon + lag(lon)) / 2, NA),
-      
+      source_height = ifelse(is_source, (height + lag(height)) / 2, NA),
       # --- Section 2: Moisture source attribution ---
       
       # Fraction of remaining humidity after an intermediate precipitation event. Requires 2 conditions:
@@ -146,13 +147,15 @@ identify_sources <- function(trajectories, qc, rh_arrival, rh_loss, rain_arrival
     filter(sphu_t0 > 1e-6) %>%
     # Relative contribution of each source (0 to 1)
     # Fractional contribution: Percentaje of contribution of the source i to the moisture at t = 0 
+    # water_mass_kg: Portion of precipitation in kg supplied by the identified source to the arrival point at t = 0
     mutate(
       fractional_contribution = ifelse(contribution != 0, contribution / sphu_t0, 0),
-      water_mass_kg = fractional_contribution * mass_kg * abs(dq_t0) / 1000
+      water_mass_kg = fractional_contribution * parcel_mass_kg * abs(dq_t0) / 1000
     ) %>%
     ungroup() %>%
     filter(is_source | age == 0) %>%
-    mutate(precipitation_kg = ifelse(age == 0, mass_kg * abs(dq_t0) / 1000, 0)) %>%
+    # Lagrangian precipitation estimate
+    mutate(precipitation_kg = ifelse(age == 0, parcel_mass_kg * abs(dq_t0) / 1000, 0)) %>%
     # --- Section 3: Spatial Indexing and Mask Join ---
 
     # Convert continuous coordinates into discrete 0.01-degree grid cells.
@@ -166,11 +169,14 @@ identify_sources <- function(trajectories, qc, rh_arrival, rh_loss, rain_arrival
       id,
       age,
       fractional_contribution,
+      parcel_mass_kg,
+      air_col_mass_kg,
       water_mass_kg,
       precipitation_kg,
-      dest_hydrological_zone,
+      hydrological_zone,
       is_source,
       blh_ratio,
+      source_height,
       source_lon,
       source_lat,
       source_lat_idx,
@@ -182,13 +188,12 @@ identify_sources <- function(trajectories, qc, rh_arrival, rh_loss, rain_arrival
     # Match the points to the mask using the integer IDs instead of spatial distances.
     # Source humidity points
     left_join(
-      mask_grid,
+      select(mask_grid, -hydrological_zone),
       by = c("source_lon_idx" = "lon_idx", "source_lat_idx" = "lat_idx")
     ) %>%
     mutate(
       is_ocean = ifelse(is_source, coalesce(is_ocean, TRUE), NA),
       country_or_ocean = ifelse(is_source, coalesce(country_or_ocean, "Unclassified Ocean"), NA),
-      source_domain = ifelse(is_source, coalesce(source_domain, "Unclassified Ocean"), NA),
       is_aoi = ifelse(is_source, coalesce(is_aoi, FALSE), NA),
       id = as.character(id)
     ) %>%
@@ -196,6 +201,8 @@ identify_sources <- function(trajectories, qc, rh_arrival, rh_loss, rain_arrival
       id,
       age,
       fractional_contribution,
+      parcel_mass_kg,
+      air_col_mass_kg,
       water_mass_kg,
       precipitation_kg,
       blh_ratio,
@@ -203,12 +210,11 @@ identify_sources <- function(trajectories, qc, rh_arrival, rh_loss, rain_arrival
       ecoregion,
       is_aoi,
       is_ocean,
-      source_hydrological_zone = hydrological_zone,
-      dest_hydrological_zone,
-      source_domain,
+      hydrological_zone,
       height_t0,
       lat_t0, 
       lon_t0,
+      source_height,
       source_lon,
       source_lat
     ) %>%

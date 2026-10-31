@@ -1,4 +1,4 @@
-pacman::p_load(arrow, geoarrow, sf, terra, tidyverse, here, duckspatial, rnaturalearth)
+pacman::p_load(arrow, geoarrow, sf, terra, tidyverse, tidyterra, here, duckspatial, rnaturalearth)
 
 rasterize_var <- function(data) {
   raster_template <- rast(data, resolution = 0.27) 
@@ -10,20 +10,17 @@ rasterize_var <- function(data) {
 
 grid_plots <- function(source_hotspots, sources){
   
-  grid <- st_bbox(c(xmin = -80, ymin = -35, xmax = 20, ymax = 30), crs = 4326) %>%
-    st_transform(3857) %>%
-    st_make_grid(cellsize = 30000) %>%
-    st_sf(id = 1:length(.), geometry = .) %>%
-    st_transform(crs = 4326)
-  
   countries <- ne_countries(continent = "south america") %>% select(name)
   n_years <- open_dataset(source_hotspots) %>% distinct(year) %>% collect %>% nrow()
   
   data <- source_hotspots %>%
     open_dataset() %>% 
     to_duckdb() %>%
-    group_by(id, month) %>%
-    summarise(water_depth = sum(water_depth, na.rm = TRUE) / n_years, .groups = "drop") %>%
+    group_by(cell_id, month) %>%
+    summarise(
+      water_depth = sum(water_depth_corr, na.rm = TRUE) / n_years,
+      geometry = first(geometry),
+      .groups = "drop") %>%
     collect() %>% 
     filter(!is.na(water_depth), water_depth > 0) %>%
     mutate(month = month(month, label = T)) %>%
@@ -32,7 +29,6 @@ grid_plots <- function(source_hotspots, sources){
       values_from = water_depth,
       values_fill = 0
     ) %>%
-    inner_join(grid) %>%
     st_as_sf(sf_column_name = 'geometry', crs = 4326) %>%
     rasterize_var()
   
@@ -48,11 +44,11 @@ grid_plots <- function(source_hotspots, sources){
   p1 <- ggplot() +
     geom_spatraster_contour_filled( 
       data = data, 
-      breaks = c(0.1, 0.5, 1, 5, 10, 20, 50, 100, 200)
+      breaks = c(0.1, 0.5, 1, 5, 10, 20, 40, 80, 120)
     ) +
     geom_spatraster_contour(
       data = data,
-      breaks = c(0.1, 0.5, 1, 5, 10, 20, 50, 100, 200), 
+      breaks = c(0.1, 0.5, 1, 5, 10, 20, 40, 80, 120), 
       color = "grey30",
       linewidth = 0.1
     ) +

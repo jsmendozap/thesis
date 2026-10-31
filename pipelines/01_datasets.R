@@ -7,7 +7,7 @@ list(
     tar_target(
         name = sphu_profile,
         description = "Water/wind vertical profile time series extraction",
-        command = profile(aoi = aoi)
+        command = profile(aoi = aoi, file = here("data", "pressure_levels.nc"))
     ),
     tar_target(
         name = config_file,
@@ -27,7 +27,8 @@ list(
             vertical_method = 0,
             path = here("hysplit", "config.json")
         ),
-        format = "file"
+        format = "file",
+        cue = tar_cue(mode = "never")
     ),
     tar_target(
       name = ecoregions,
@@ -35,19 +36,29 @@ list(
       command = load_ecoregions(config_file)
     ),
     tar_target(
-        name = land_ocean_mask,
-        description = "Build land-ocean spatial mask",
-        command = get_mask(config_file, aoi, ecoregions, here("data", "mask_grid.parquet")),
-        format = "file"
+      name = land_ocean_mask,
+      description = "Build land-ocean spatial mask",
+      command = get_mask(config_file, aoi, ecoregions, here("data", "mask_grid.parquet")),
+      format = "file"
     ), 
     tar_target(
-        name = monthly_precipitation,
-        description = "Build monthly precipitation dataset",
-        command = {
-          data <- here("data", "precipitation_mm.nc")
-          out <- here("data", "monthly_pp.parquet")
-          get_monthly_pp(aoi, data, out)
-        },
-        format = "file"
+      name = monthly_precipitation,
+      description = "Build monthly precipitation dataset within hz",
+      command = get_monthly_pp(
+        file = here("data", "precipitation_mm.nc"),
+        aoi = aoi,
+        path = here("data", "monthly_pp.parquet")
+      ),
+      format = "file"
+    ),
+    tar_target(
+      name = monthly_evaporation,
+      description = "Build monthly evaporation dataset by ecoregion",
+      command = get_monthly_evap(
+        file = here("data", "single_levels.nc"),
+        ecoregions = ecoregions,
+        path = here("data", "monthly_evap.parquet")
+      ),
+      format = "file"
     )
 )

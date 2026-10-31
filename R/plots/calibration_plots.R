@@ -45,10 +45,10 @@ params_plots <- function(cal){
     )
   
   p2 <- cal$checks$attribution %>% 
-    drop_na(dest_hydrological_zone) %>%
+    drop_na(hydrological_zone) %>%
     mutate(dev_ratio = ratio - 1.0) %>%
     add_config_label() %>%
-    ggplot(aes(x = dest_hydrological_zone, y = dev_ratio, fill = config_clean)) +
+    ggplot(aes(x = hydrological_zone, y = dev_ratio, fill = config_clean)) +
     geom_hline(yintercept = 0.0, linetype = "solid", color = "gray30", linewidth = 0.6) +
     geom_col(position = position_dodge(width = 0.85), width = 0.65, col = "gray30") +
     facet_grid(month_name ~ year) +
@@ -115,12 +115,12 @@ params_plots <- function(cal){
     )
   
   
-  p4 <- cal$checks$vs_observed %>%
-    drop_na(dest_hydrological_zone) %>%
+  p4 <- cal$checks$vs_pp_observed %>%
+    drop_na(hydrological_zone) %>%
     filter(config != "rain_none_arrival80_loss80") %>%
     mutate(dev_ratio = ratio - 1.0) %>%
     add_config_label() %>%
-    ggplot(aes(x = dest_hydrological_zone, y = dev_ratio, fill = config_clean)) +
+    ggplot(aes(x = hydrological_zone, y = dev_ratio, fill = config_clean)) +
     geom_hline(yintercept = 0.0, linetype = "solid", color = "gray30", linewidth = 0.6) +
     geom_col(position = position_dodge(width = 0.85), width = 0.65, color = "gray30") +
     facet_grid(month_name ~ year) +

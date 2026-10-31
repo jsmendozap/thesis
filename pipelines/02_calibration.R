@@ -41,6 +41,20 @@ list(
       resources = tar_resources(crew = tar_resources_crew(controller = "light"))
     ),
     tar_target(
+      name = trj_duration,
+      command = {
+        duration %>%
+          arrange(year, month, durations) %>%
+          group_by(year, month) %>%
+          mutate(marginal_gain = lag(unknown_origin) - unknown_origin) %>%
+          filter(marginal_gain < 0.025) %>%
+          slice_head(n = 1) %>%
+          ungroup() %>%
+          pull(durations) %>%
+          max()
+      }
+    ),
+    tar_target(
       name = calibration_config,
       description = "Definition of Sodemann parameter combinations",
       command = {
@@ -94,7 +108,16 @@ list(
     tar_target(
       name = config_results,
       description = "Benchmark Sodemann sensitivity and attribution metrics",
-      command = results_sod_config(algorithm_parameters, 90, monthly_precipitation,
-                                   config_file, aoi, land_ocean_mask) 
+      command = results_sod_config(
+        sources = algorithm_parameters,
+        cutoff = 90,
+        pp = monthly_precipitation,
+        evap = monthly_evaporation, 
+        config_file = config_file,
+        aoi = aoi,
+        mask = land_ocean_mask,
+        ecoregions = ecoregions,
+        blh_limit = FALSE
+      ) 
     )
 )
